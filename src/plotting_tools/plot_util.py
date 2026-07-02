@@ -1,3 +1,5 @@
+"""Figure、Axes、系列情報を扱う描画ユーティリティ。"""
+
 from __future__ import annotations
 
 import math
@@ -23,10 +25,14 @@ EPSILON = 1e-9
 
 
 class _RendererCanvas(Protocol):
+    """テキスト寸法計算に必要なcanvasの最小インターフェース。"""
+
     def get_renderer(self) -> RendererBase: ...
 
 
 class PlotConfig(BaseModel):
+    """描画スタイルの既定値を保持する。"""
+
     default_size: list[int] = Field(default_factory=lambda: [900, 550])
     default_dpi: int = 100
     title_fontsize: int = 10
@@ -40,6 +46,8 @@ APP_CONFIG = PlotConfig()
 
 @dataclass
 class PlotStyleConfig:
+    """GraphBuilderへ渡すFigureと文字サイズの設定。"""
+
     size: tuple[int, int] = (APP_CONFIG.default_size[0], APP_CONFIG.default_size[1])
     dpi: int = APP_CONFIG.default_dpi
     title_fontsize: int = APP_CONFIG.title_fontsize
@@ -49,6 +57,7 @@ class PlotStyleConfig:
 
 
 def format_sci_mathtext(x: float, pos: object = None) -> str:  # noqa: ARG001
+    """数値をmathtextで表示可能な科学表記へ変換する。"""
     if x == 0:
         return "0"
     exponent = math.floor(math.log10(abs(x)))
@@ -57,17 +66,23 @@ def format_sci_mathtext(x: float, pos: object = None) -> str:  # noqa: ARG001
 
 
 class AxisSide(Enum):
+    """系列を描画するY軸の側を表す。"""
+
     LEFT = "left"
     RIGHT = "right"
 
 
 class ScaleEnum(Enum):
+    """Y軸で利用可能なスケールを表す。"""
+
     LINEAR = "linear"
     LOG = "log"
 
 
 @dataclass
 class PlotInfo:
+    """1系列分のデータと描画属性を保持する。"""
+
     data: pd.Series[Any]
     axis: AxisSide = AxisSide.LEFT
     label: str = ""
@@ -77,7 +92,10 @@ class PlotInfo:
 
 
 class GraphBuilder:
+    """左右Y軸を扱う薄いmatplotlib描画wrapper。"""
+
     def __init__(self, style_config: PlotStyleConfig | None = None) -> None:
+        """Figureと左Y軸を生成し、共通の軸スタイルを適用する。"""
         self.style = style_config or PlotStyleConfig()
         self.fig, self.ax1 = plt.subplots(
             figsize=(
@@ -115,6 +133,7 @@ class GraphBuilder:
             self._math_parser = None
 
     def _is_valid_latex(self, text: str) -> bool:
+        """matplotlibのmathtext parserで文字列を事前検証する。"""
         if not text or "$" not in text or self._math_parser is None:
             return True
         try:
@@ -124,14 +143,17 @@ class GraphBuilder:
         return True
 
     def _get_safe_text(self, text: str) -> str:
+        """無効なmathtextを描画可能な代替ラベルへ置き換える。"""
         return text if self._is_valid_latex(text) else "[Label Error]"
 
     @staticmethod
     def _setup_axis(ax: Axes) -> None:
+        """軸へminor tick locatorを設定する。"""
         ax.xaxis.set_minor_locator(AutoMinorLocator(5))
         ax.yaxis.set_minor_locator(AutoMinorLocator(5))
 
     def get_ax2(self) -> Axes:
+        """右Y軸を必要になった時点で生成して返す。"""
         if self.ax2 is None:
             self.ax2 = self.ax1.twinx()
             self._setup_axis(self.ax2)
@@ -145,6 +167,7 @@ class GraphBuilder:
         return self.ax2
 
     def set_labels(self, xlabel: str, ylabel_left: str, ylabel_right: str = "") -> None:
+        """X軸と左右Y軸のラベルを設定する。"""
         self.ax1.set_xlabel(self._get_safe_text(xlabel), fontsize=self.style.label_fontsize)
         self.ax1.set_ylabel(self._get_safe_text(ylabel_left), fontsize=self.style.label_fontsize)
         if ylabel_right:
@@ -154,22 +177,27 @@ class GraphBuilder:
             )
 
     def set_title(self, title: str) -> None:
+        """mathtextを検証してグラフタイトルを設定する。"""
         self.ax1.set_title(self._get_safe_text(title), fontsize=self.style.title_fontsize)
 
     def set_xlim(self, xmin: float, xmax: float) -> None:
+        """同一値の場合にも幅を持つX軸範囲を設定する。"""
         if abs(xmax - xmin) < EPSILON:
             xmin -= 0.5
             xmax += 0.5
         self.ax1.set_xlim(xmin, xmax)
 
     def set_base_ylim(self, side: AxisSide, ymin: float, ymax: float) -> None:
+        """自動範囲より狭くならないY軸の基準範囲を登録する。"""
         self._base_ylim[side] = (ymin, ymax)
 
     def set_yscale(self, side: AxisSide, scale: ScaleEnum | str) -> None:
+        """指定した側のY軸スケールを設定する。"""
         target_ax = self.ax1 if side is AxisSide.LEFT else self.get_ax2()
         target_ax.set_yscale(scale.value if isinstance(scale, ScaleEnum) else scale)
 
     def add_plot(self, x_data: pd.Series[Any], plot_info: PlotInfo) -> None:
+        """系列を指定されたY軸へ追加し、凡例情報を保持する。"""
         target_ax = self.ax1 if plot_info.axis is AxisSide.LEFT else self.get_ax2()
         target_ax.set_yscale(plot_info.scale.value)
         safe_label = self._get_safe_text(plot_info.label)
@@ -185,6 +213,7 @@ class GraphBuilder:
             self.labels.append(safe_label)
 
     def adjust_axes_limits(self) -> None:
+        """自動計算範囲と基準範囲を包含するY軸範囲へ調整する。"""
         for side in AxisSide:
             axis = self.ax1 if side is AxisSide.LEFT else self.ax2
             base_ylim = self._base_ylim[side]
@@ -202,6 +231,7 @@ class GraphBuilder:
         ax_side: AxisSide = AxisSide.LEFT,
         **kwargs: Any,  # noqa: ANN401
     ) -> Text:
+        """無効なmathtextを安全な代替文字列にして配置する。"""
         axis = self.ax1 if ax_side is AxisSide.LEFT else self.get_ax2()
         if self._is_valid_latex(text):
             return axis.text(x, y, text, **kwargs)
@@ -214,6 +244,7 @@ class GraphBuilder:
         fontsize: int,
         ax_side: AxisSide = AxisSide.LEFT,
     ) -> tuple[float, float]:
+        """ラベル配置に使う文字列のデータ幅とAxes相対高さを返す。"""
         axis = self.ax1 if ax_side is AxisSide.LEFT else self.get_ax2()
         renderer = cast("_RendererCanvas", self.fig.canvas).get_renderer()
         artist: Artist | None = None
@@ -231,6 +262,7 @@ class GraphBuilder:
         return float(bbox_data.width), float(bbox_axes.height)
 
     def finalize(self) -> Figure:
+        """軸範囲、凡例、layoutを確定してFigureを返す。"""
         self.adjust_axes_limits()
         try:
             if self.labels:

@@ -1,3 +1,5 @@
+"""研究データ描画向けの軽量なmatplotlib wrapperを公開する。"""
+
 from plotting_tools.event_plotter import (
     EventDrawer,
     EventPlotConfig,

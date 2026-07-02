@@ -1,3 +1,5 @@
+"""GraphBuilderへイベント範囲、時点、ラベルを追加する拡張機能。"""
+
 from __future__ import annotations
 
 import math
@@ -15,6 +17,8 @@ if TYPE_CHECKING:
 
 @dataclass
 class EventPlotConfig:
+    """イベントの色、期間、時点を保持する描画設定。"""
+
     colors: dict[str, str]
     spans: list[dict[str, Any]]
     points: list[dict[str, Any]]
@@ -412,6 +416,7 @@ class EventDrawer:
         time_shift_sec: float = 0.0,
         divisor: float = 1.0,
     ) -> None:
+        """描画対象、イベント設定、時間座標の変換条件を保持する。"""
         if divisor == 0:
             msg = "divisor must not be zero"
             raise ValueError(msg)
@@ -421,10 +426,12 @@ class EventDrawer:
         self.divisor = divisor
 
     def _shift_time(self, seconds: float) -> float:
+        """元の秒座標へシフトと除数を適用して描画座標へ変換する。"""
         return (seconds - self.time_shift_sec) / self.divisor
 
     @staticmethod
     def _optional_float(value: object, default: float = 0.0) -> float:
+        """任意値をfloatへ変換し、変換不能なら既定値を返す。"""
         if value is None:
             return default
         if isinstance(value, (int, float)):
@@ -440,6 +447,7 @@ class EventDrawer:
 
     @staticmethod
     def _optional_float_or_none(value: object) -> float | None:
+        """任意値をfloatへ変換し、変換不能ならNoneを返す。"""
         if value is None:
             return None
         if isinstance(value, (int, float)):
