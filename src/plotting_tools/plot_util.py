@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
+import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.mathtext import MathTextParser
 from matplotlib.ticker import AutoMinorLocator
+from numpy.typing import NDArray
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    import pandas as pd
     from matplotlib.artist import Artist
     from matplotlib.axes import Axes
     from matplotlib.backend_bases import RendererBase
@@ -22,6 +25,17 @@ if TYPE_CHECKING:
     from matplotlib.text import Text
 
 EPSILON = 1e-9
+
+# matplotlibへ渡せる型を明示しつつ、Anyによる無制限な入力許可を避ける。
+type PlotXData = (
+    pd.Series
+    | pd.Index
+    | NDArray[np.number]
+    | NDArray[np.datetime64]
+    | Sequence[float]
+    | Sequence[str]
+)
+type PlotYData = pd.Series | pd.Index | NDArray[np.number] | Sequence[float]
 
 
 class _RendererCanvas(Protocol):
@@ -83,7 +97,7 @@ class ScaleEnum(Enum):
 class PlotInfo:
     """1系列分のデータと描画属性を保持する。"""
 
-    data: pd.Series[Any]
+    data: PlotYData
     axis: AxisSide = AxisSide.LEFT
     label: str = ""
     color: str | None = None
@@ -196,8 +210,23 @@ class GraphBuilder:
         target_ax = self.ax1 if side is AxisSide.LEFT else self.get_ax2()
         target_ax.set_yscale(scale.value if isinstance(scale, ScaleEnum) else scale)
 
-    def add_plot(self, x_data: pd.Series[Any], plot_info: PlotInfo) -> None:
+    @staticmethod
+    def _validate_plot_data(x_data: PlotXData, y_data: PlotYData) -> None:
+        """X/Yデータが1次元かつ同じ長さであることを検証する。"""
+        # 型注釈だけでは2次元のndarrayや実行時に渡されるDataFrameを排除できない。
+        if isinstance(x_data, pd.DataFrame) or np.ndim(x_data) != 1:
+            msg = "x_data must be one-dimensional"
+            raise ValueError(msg)
+        if isinstance(y_data, pd.DataFrame) or np.ndim(y_data) != 1:
+            msg = "plot_info.data must be one-dimensional"
+            raise ValueError(msg)
+        if len(x_data) != len(y_data):
+            msg = "x_data and plot_info.data must have the same length"
+            raise ValueError(msg)
+
+    def add_plot(self, x_data: PlotXData, plot_info: PlotInfo) -> None:
         """系列を指定されたY軸へ追加し、凡例情報を保持する。"""
+        self._validate_plot_data(x_data, plot_info.data)
         target_ax = self.ax1 if plot_info.axis is AxisSide.LEFT else self.get_ax2()
         target_ax.set_yscale(plot_info.scale.value)
         safe_label = self._get_safe_text(plot_info.label)
@@ -208,9 +237,8 @@ class GraphBuilder:
             color=plot_info.color,
             label=safe_label,
         )
-        if safe_label:
-            self.lines.append(line)
-            self.labels.append(safe_label)
+        self.lines.append(line)
+        self.labels.append(safe_label)
 
     def adjust_axes_limits(self) -> None:
         """自動計算範囲と基準範囲を包含するY軸範囲へ調整する。"""
@@ -265,10 +293,16 @@ class GraphBuilder:
         """軸範囲、凡例、layoutを確定してFigureを返す。"""
         self.adjust_axes_limits()
         try:
-            if self.labels:
+            legend_items = [
+                (line, label)
+                for line, label in zip(self.lines, self.labels, strict=True)
+                if label
+            ]
+            if legend_items:
+                legend_lines, legend_labels = zip(*legend_items, strict=True)
                 self.ax1.legend(
-                    self.lines,
-                    self.labels,
+                    legend_lines,
+                    legend_labels,
                     loc="best",
                     fontsize=self.style.legend_fontsize,
                 )

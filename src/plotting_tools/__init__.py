@@ -13,6 +13,8 @@ from plotting_tools.plot_util import (
     PlotConfig,
     PlotInfo,
     PlotStyleConfig,
+    PlotXData,
+    PlotYData,
     ScaleEnum,
     format_sci_mathtext,
 )
@@ -28,6 +30,8 @@ __all__ = [
     "PlotConfig",
     "PlotInfo",
     "PlotStyleConfig",
+    "PlotXData",
+    "PlotYData",
     "ScaleEnum",
     "format_sci_mathtext",
 ]
