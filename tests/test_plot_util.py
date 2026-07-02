@@ -5,7 +5,22 @@ from pathlib import Path
 import pandas as pd
 from matplotlib.figure import Figure
 
-from plotting_tools import AxisSide, GraphBuilder, PlotInfo, ScaleEnum
+from plotting_tools import AxisSide, GraphBuilder, PlotInfo, ScaleEnum, format_sci_mathtext
+
+
+def test_format_sci_mathtext_zero() -> None:
+    """ゼロが指数表記にならないことを確認する。"""
+    assert format_sci_mathtext(0) == "0"
+
+
+def test_set_xlim_expands_identical_limits() -> None:
+    """同じ上下限を指定しても表示幅が確保されることを確認する。"""
+    builder = GraphBuilder()
+
+    builder.set_xlim(1.0, 1.0)
+    xmin, xmax = builder.ax1.get_xlim()
+
+    assert xmin < 1.0 < xmax
 
 
 def test_graph_builder_creates_figure() -> None:
