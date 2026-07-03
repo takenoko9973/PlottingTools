@@ -554,13 +554,12 @@ class EventDrawer:
 
         # 凡例の事前レンダリングと障害物の生成
         initial_obstacles = []
-        if self.builder.labels:
-            leg = ax.legend(
-                self.builder.lines,
-                self.builder.labels,
-                loc="best",
-                fontsize=self.builder.style.legend_fontsize,
-            )
+        if self.builder.labels and self.builder.style.legend.visible:
+            existing_legend = ax.get_legend()
+            leg = existing_legend or self.builder.create_legend()
+            if leg is None:
+                msg = "legend could not be created from labeled plot lines"
+                raise RuntimeError(msg)
             self.builder.fig.canvas.draw()
             bbox_disp = leg.get_window_extent()
             bbox_axes = bbox_disp.transformed(ax.transAxes.inverted())
@@ -573,7 +572,8 @@ class EventDrawer:
                     "top": bbox_axes.y1,
                 }
             )
-            leg.remove()
+            if existing_legend is None:
+                leg.remove()
 
         engine = LabelLayoutEngine(
             builder=self.builder,
