@@ -281,11 +281,12 @@ class GraphBuilder:
             direction=self.style.axes.tick_direction,
             top=True,
         )
+        grid_options = self.style.axes.grid_options if self.style.axes.grid else {}
         ax.grid(
             self.style.axes.grid,
             which=self.style.axes.grid_which,
             axis=self.style.axes.grid_axis,
-            **self.style.axes.grid_options,
+            **grid_options,
         )
 
     def get_ax2(self) -> Axes:

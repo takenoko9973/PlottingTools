@@ -1,5 +1,6 @@
 """GraphBuilderの基本動作を検証するbehavior test。"""
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -329,6 +330,20 @@ def test_style_applies_axis_grid_line_and_title_options() -> None:
     assert builder.lines[0].get_linewidth() == pytest.approx(3.0)
     assert builder.ax1.title.get_color() == "red"
     assert any(line.get_visible() for line in builder.ax1.get_xgridlines())
+
+
+def test_grid_options_are_ignored_when_grid_is_disabled() -> None:
+    """grid無効時は線設定によるwarningやgrid有効化が起きないことを確認する。"""
+    style = PlotStyleConfig(
+        axes=AxisStyleConfig(grid=False, grid_options={"color": "red"}),
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        builder = GraphBuilder(style)
+
+    gridlines = builder.ax1.get_xgridlines() + builder.ax1.get_ygridlines()
+    assert not any(line.get_visible() for line in gridlines)
 
 
 def test_context_manager_clears_figure() -> None:
