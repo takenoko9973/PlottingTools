@@ -4,6 +4,15 @@ PlottingTools は、研究データ描画でよく使う matplotlib の処理を
 軽量 wrapper です。`GraphBuilder` を中心に、Figure / Axes の生成からグラフの
 仕上げまでを一貫した API で扱えます。
 
+公開 API は用途ごとに次の3グループへ分けています。利用側では内部モジュールではなく、
+`plotting_tools` package root から import してください。
+
+| 用途 | 主な API |
+| --- | --- |
+| 折れ線描画 | `GraphBuilder`, `PlotInfo`, `AxisSide`, `ScaleEnum` |
+| 描画スタイル | `PlotStyleConfig` と責務別の `*StyleConfig` |
+| イベント注釈 | `EventDrawer`, `EventPlotConfig`, `EventSpan`, `EventPoint`, `EventLayoutData` |
+
 ## 主な機能
 
 - `GraphBuilder` による折れ線グラフの作成
@@ -11,7 +20,7 @@ PlottingTools は、研究データ描画でよく使う matplotlib の処理を
 - linear / log scale の設定
 - 軸ラベル、タイトル、凡例の設定
 - 不正な mathtext 風ラベルによる描画エラーの回避
-- `EventDrawer` と `EventPlotConfig` によるイベント注釈とラベル配置
+- 型付きイベント設定によるイベント注釈と衝突回避ラベル配置
 
 ## インストール
 
@@ -93,8 +102,58 @@ builder = GraphBuilder(style)
 
 ## イベント注釈
 
-`EventPlotConfig.spans` で期間、`EventPlotConfig.points` で時点を指定し、
-`EventDrawer` を使って既存の `GraphBuilder` に注釈を追加できます。
+期間は `EventSpan`、時点は `EventPoint` で表します。辞書のキーを実行時に解釈せず、
+必要な値を生成時に確認できる形です。`EventLayoutData` はラベルが左右の系列を避けるために
+必要なデータと軸条件をまとめます。
+
+```python
+from plotting_tools import (
+    EventDrawer,
+    EventLayoutData,
+    EventPlotConfig,
+    EventPoint,
+    EventSpan,
+    ScaleEnum,
+)
+
+events = EventPlotConfig(
+    colors={"process": "tab:green"},
+    spans=[
+        EventSpan(
+            event="process",
+            start=0.5,
+            end=1.5,
+            label="heating",
+        ),
+    ],
+    points=[
+        EventPoint(
+            event="process",
+            time=2.0,
+            label="measurement",
+        ),
+    ],
+)
+layout_data = EventLayoutData(
+    x=df["x"],
+    primary_y=df["y"],
+    secondary_y=[1e-4, 2e-4, 1.5e-4, 3e-4],
+    primary_scale=ScaleEnum.LINEAR,
+    secondary_scale=ScaleEnum.LOG,
+    secondary_ylim=(1e-5, 1e-3),
+)
+
+EventDrawer(builder, events).draw_events(layout_data)
+```
+
+## API整理に伴う変更
+
+- `PlotInfo` と `PlotInfo.style` は従来どおり利用できます。
+- `EventPlotConfig.spans` / `points` は辞書ではなく `EventSpan` / `EventPoint` を受け取ります。
+- `EventDrawer.draw_events()` の系列情報は個別引数ではなく `EventLayoutData` にまとめました。
+- `LabelItem`、`LabelLayoutEngine`、`LabelPriority` は内部実装となり、package root からは公開しません。
+- `PlotConfig`、`PlotXData`、`PlotYData` は利用者が直接操作するAPIではないため、package root からは公開しません。
+- 旧 `plotting_tools.plot_util` は責務別モジュールへ分割しました。公開 API は package root から import してください。
 
 ## このパッケージに含めないもの
 
