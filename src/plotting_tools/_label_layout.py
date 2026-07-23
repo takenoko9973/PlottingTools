@@ -94,6 +94,7 @@ class DataPenaltyWeights:
 class LabelLayoutEngine:
     """ラベルのY移動を優先し、必要な場合だけX移動を試す。"""
 
+    # Axes相対Y座標で、上側から下側へ試すラベル位置の候補。
     # 候補順が描画結果を決めるため、上側、下側、中央付近の順序を固定する。
     DEFAULT_Y_CANDIDATES: ClassVar[tuple[float, ...]] = (
         0.95,
@@ -107,7 +108,7 @@ class LabelLayoutEngine:
         0.35,
     )
 
-    # ラベル幅を基準に小さい移動から試し、元イベントとの対応を保つ。
+    # ラベル幅に対するX移動量の倍率。0を先に試して元イベントとの対応を保つ。
     X_SHIFT_MULTIPLIERS: ClassVar[tuple[float, ...]] = (
         0.0,
         -0.3,
@@ -116,21 +117,31 @@ class LabelLayoutEngine:
         0.5,
     )
 
+    # Axes端から確保する余白をラベル幅に対する比率で指定する (単位なし)。
     EDGE_MARGIN_RATIO = 0.05
+    # この値未満の総ペナルティ (単位なし) なら、残りの候補探索を打ち切る。
     ACCEPTABLE_PENALTY = 100.0
+    # 正規化Y距離がこの値未満なら、データ線に近い候補として扱う (単位なし)。
     NEAR_DATA_THRESHOLD = 0.05
+    # 文字幅が極端に小さいときのX移動量の相対評価を避ける下限 (データ座標)。
     MIN_TEXT_WIDTH = 1e-12
+    # イベント線とラベル位置が同一とみなせるX座標差の許容値 (データ座標)。
     SAME_LINE_TOLERANCE = 1e-6
 
+    # ラベル矩形が重なる場合の大きなペナルティ (単位なし)。
     PENALTY_OVERLAP_LABEL = 10_000.0
+    # 別イベントの縦線がラベル矩形を横切る場合のペナルティ (単位なし)。
     PENALTY_OVERLAP_EVENT_LINE = 8_000.0
+    # X移動量に比例して加える、衝突回避より小さいペナルティ (単位なし)。
     PENALTY_X_SHIFT = 50.0
 
+    # 左Y軸データ用の重み (単位なし)。重なり、近接、距離の順に優先度を下げて評価する。
     PRIMARY_DATA_WEIGHTS = DataPenaltyWeights(
         overlap=8_000.0,
         near=5_000.0,
         distance=10.0,
     )
+    # 右Y軸データ用の重み (単位なし)。左Y軸より相対的に小さい重みで候補を評価する。
     SECONDARY_DATA_WEIGHTS = DataPenaltyWeights(
         overlap=1_000.0,
         near=100.0,
@@ -138,6 +149,7 @@ class LabelLayoutEngine:
     )
 
     # log軸範囲が非正の場合も正規化計算を継続できるよう1 decadeを仮定する。
+    # log10空間の下限・上限で、-15から-14が1 decadeを表す。
     LOG_FALLBACK_MIN = -15.0
     LOG_FALLBACK_MAX = -14.0
 
@@ -314,15 +326,13 @@ class LabelLayoutEngine:
     @staticmethod
     def _minimum_vertical_distance(bounds: Bounds, y_values: np.ndarray) -> float:
         """ラベル矩形と正規化済みデータ点の最短Y距離を返す。"""
-        distances = np.where(
-            (y_values >= bounds.bottom) & (y_values <= bounds.top),
-            0.0,
-            np.where(
-                y_values > bounds.top,
-                y_values - bounds.top,
-                bounds.bottom - y_values,
-            ),
-        )
+        inside_mask = (y_values >= bounds.bottom) & (y_values <= bounds.top)
+        above_mask = y_values > bounds.top
+
+        # 下側を既定にして上側、矩形内の順に上書きし、元の分岐優先順位を保つ。
+        distances = np.asarray(bounds.bottom - y_values, dtype=float)
+        distances[above_mask] = y_values[above_mask] - bounds.top
+        distances[inside_mask] = 0.0
         return float(np.min(distances))
 
     def _data_penalty(

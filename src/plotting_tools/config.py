@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+# Figureのsizeに必要な幅・高さの要素数。
 FIGURE_DIMENSIONS = 2
 
 type LegendLocation = (
@@ -29,21 +30,29 @@ type LegendLocation = (
 class _PlotDefaults(BaseModel):
     """描画スタイルのライブラリ既定値を保持する。"""
 
+    # Figureの幅・高さ。GraphBuilderへ渡す前のピクセル単位。
     default_size: tuple[int, int] = (900, 550)
+    # Figureの解像度。1 inchあたりのdot数 (DPI)。
     default_dpi: int = 100
+    # タイトル文字サイズ (matplotlibのpoint単位)。
     title_fontsize: int = 10
+    # 軸ラベル文字サイズ (matplotlibのpoint単位)。
     label_fontsize: int = 18
+    # 目盛文字サイズ (matplotlibのpoint単位)。
     tick_fontsize: int = 16
+    # 凡例文字サイズ (matplotlibのpoint単位)。
     legend_fontsize: int = 10
+    # 文字フォント名。Noneの場合はmatplotlibの既定フォントを使う。
     font_family: str | None = None
 
 
+# 各設定クラスが共有する既定値の実体。
 _DEFAULTS = _PlotDefaults()
 
 
 @dataclass
 class FigureStyleConfig:
-    """Figureの寸法と解像度を設定する。"""
+    """Figureの寸法 (ピクセル) と解像度 (DPI) を設定する。"""
 
     size: tuple[int, int] = _DEFAULTS.default_size
     dpi: int = _DEFAULTS.default_dpi
@@ -61,7 +70,7 @@ class FigureStyleConfig:
 
 @dataclass
 class TextStyleConfig:
-    """タイトル、軸ラベル、目盛の文字スタイルを設定する。"""
+    """タイトル、軸ラベル、目盛の文字スタイル (point単位) を設定する。"""
 
     title_fontsize: int = _DEFAULTS.title_fontsize
     label_fontsize: int = _DEFAULTS.label_fontsize
@@ -106,7 +115,7 @@ class AxisStyleConfig:
 
 @dataclass
 class LegendStyleConfig:
-    """凡例の表示、配置、文字サイズを設定する。"""
+    """凡例の表示、配置、文字サイズ (point単位) を設定する。"""
 
     visible: bool = True
     loc: LegendLocation = "best"
@@ -128,8 +137,9 @@ class LegendStyleConfig:
 
 @dataclass
 class LineStyleConfig:
-    """系列の既定線幅を設定する。"""
+    """系列の既定線幅 (matplotlibのpoint単位) を設定する。"""
 
+    # matplotlibへ渡す線幅 (point単位)。
     width: float = 1.5
 
     def __post_init__(self) -> None:

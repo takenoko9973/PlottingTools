@@ -4,7 +4,7 @@ import math
 
 
 def format_sci_mathtext(x: float, pos: object = None) -> str:  # noqa: ARG001
-    """数値をmathtextで表示可能な科学表記へ変換する。"""
+    """数値を係数小数1桁、整数指数のmathtext科学表記へ変換する。"""
     if x == 0:
         return "0"
 

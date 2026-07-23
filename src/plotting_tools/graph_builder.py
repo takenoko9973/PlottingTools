@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from matplotlib.text import Text
     from matplotlib.ticker import Formatter, Locator
 
+# X軸範囲の幅が単一点とみなせるか判定する許容差 (データ座標)。
 EPSILON = 1e-9
 
 

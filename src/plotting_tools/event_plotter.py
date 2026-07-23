@@ -26,10 +26,15 @@ if TYPE_CHECKING:
 class EventDrawer:
     """イベントの描画とラベル配置をGraphBuilderへ追加する。"""
 
+    # 色設定にイベント名がない場合に使う期間・時点共通の既定色。
     COLOR_EVENT_DEFAULT = "green"
+    # 期間イベントの塗りつぶし透明度 (0から1の範囲、単位なし)。
     ALPHA_EVENT_SPAN = 0.1
+    # 時点イベントを示す縦線のmatplotlib linestyle。
     STYLE_EVENT_POINT = ":"
+    # 時点イベントの縦線透明度 (0から1の範囲、単位なし)。
     ALPHA_EVENT_POINT = 0.8
+    # イベントラベルの文字サイズ (matplotlibのpoint単位)。
     FONTSIZE_EVENT_LABEL = 16
 
     def __init__(
@@ -66,6 +71,7 @@ class EventDrawer:
             start_x = self._shift_time(span.start)
             end_x = self._shift_time(span.end)
 
+            # 表示開始位置より前に完了した期間は、描画対象から除外する。
             if end_x <= 0:
                 continue
 
@@ -104,6 +110,7 @@ class EventDrawer:
             color = self._event_color(point.event)
             time_x = self._shift_time(point.time)
 
+            # 表示領域の開始より前にある時点は、描画対象から除外する。
             if time_x < 0:
                 continue
 
@@ -181,6 +188,7 @@ class EventDrawer:
     def _draw_labels(self, labels: list[LabelItem]) -> None:
         """決定済み座標へイベントラベルを描画する。"""
         for item in labels:
+            # 設定値の文字列 "\\n" を、matplotlibが改行として描画できる文字へ戻す。
             display_label = item.label.replace("\\n", "\n")
             self.builder.add_safe_text(
                 item.final_x,
