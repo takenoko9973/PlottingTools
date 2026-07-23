@@ -81,6 +81,17 @@ def test_graph_builder_accepts_python_list() -> None:
     assert len(builder.lines) == 1
 
 
+def test_plot_info_style_is_passed_to_matplotlib() -> None:
+    """PlotInfo.styleのformat文字列が系列の線種へ反映されることを確認する。"""
+    builder = GraphBuilder()
+    builder.add_plot(
+        [0.0, 1.0],
+        PlotInfo(data=[1.0, 2.0], style="--"),
+    )
+
+    assert builder.lines[0].get_linestyle() == "--"
+
+
 def test_add_plot_rejects_two_dimensional_x_data() -> None:
     """2次元のXデータを明示的に拒否することを確認する。"""
     builder = GraphBuilder()

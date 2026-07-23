@@ -1,8 +1,18 @@
 """イベント注釈のsmoke test。"""
 
 import pandas as pd
+import pytest
 
-from plotting_tools import EventDrawer, EventPlotConfig, GraphBuilder, PlotInfo
+from plotting_tools import (
+    EventDrawer,
+    EventLayoutData,
+    EventPlotConfig,
+    EventPoint,
+    EventSpan,
+    GraphBuilder,
+    PlotInfo,
+    ScaleEnum,
+)
 
 
 def test_event_drawer_draws_annotations_without_raising() -> None:
@@ -16,26 +26,50 @@ def test_event_drawer_draws_annotations_without_raising() -> None:
     config = EventPlotConfig(
         colors={"process": "tab:green"},
         spans=[
-            {
-                "event": "process",
-                "start": 0.5,
-                "end": 1.5,
-                "label": "span",
-            }
+            EventSpan(
+                event="process",
+                start=0.5,
+                end=1.5,
+                label="span",
+            ),
         ],
-        points=[{"event": "process", "time": 2.0, "label": "point"}],
+        points=[
+            EventPoint(
+                event="process",
+                time=2.0,
+                label="point",
+            ),
+        ],
+    )
+    layout_data = EventLayoutData(
+        x=x_data,
+        primary_y=main_data,
+        secondary_y=pressure_data,
+        primary_scale=ScaleEnum.LINEAR,
+        secondary_scale=ScaleEnum.LOG,
+        secondary_ylim=(1e-5, 1e-3),
     )
 
-    EventDrawer(builder, config).draw_events(
-        time_s=x_data,
-        main_data_s=main_data,
-        is_log_main=False,
-        pressure_data_s=pressure_data,
-        is_log_press=True,
-        ylim_press=(1e-5, 1e-3),
-    )
+    EventDrawer(builder, config).draw_events(layout_data)
     figure = builder.finalize()
     figure.canvas.draw()
 
     assert len(builder.ax1.patches) == 1
     assert len(builder.ax1.texts) == expected_annotation_count
+
+
+def test_event_span_rejects_reversed_range() -> None:
+    """期間イベントの開始位置が終了位置以上の場合に拒否することを確認する。"""
+    with pytest.raises(ValueError, match="start must be smaller than end"):
+        EventSpan(event="process", start=2.0, end=1.0)
+
+
+def test_event_layout_rejects_different_lengths() -> None:
+    """ラベル配置用系列の長さが一致しない場合に拒否することを確認する。"""
+    with pytest.raises(ValueError, match="must have the same length"):
+        EventLayoutData(
+            x=[0.0, 1.0],
+            primary_y=[1.0],
+            secondary_y=[1e-4, 2e-4],
+            secondary_ylim=(1e-5, 1e-3),
+        )
