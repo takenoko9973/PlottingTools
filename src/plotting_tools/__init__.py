@@ -19,6 +19,8 @@ from plotting_tools.formatters import format_sci_mathtext
 from plotting_tools.graph_builder import GraphBuilder
 from plotting_tools.models import AxisSide, PlotInfo, ScaleEnum
 
+Plot = GraphBuilder
+
 __all__ = [
     "AxisSide",
     "AxisStyleConfig",
@@ -31,6 +33,7 @@ __all__ = [
     "GraphBuilder",
     "LegendStyleConfig",
     "LineStyleConfig",
+    "Plot",
     "PlotInfo",
     "PlotStyleConfig",
     "ScaleEnum",

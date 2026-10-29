@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from matplotlib.lines import Line2D
     from matplotlib.text import Text
     from matplotlib.ticker import Formatter, Locator
+    from matplotlib.typing import LineStyleType
 
 # X軸範囲の幅が単一点とみなせるか判定する許容差 (データ座標)。
 EPSILON = 1e-9
@@ -369,6 +370,38 @@ class GraphBuilder:
                 self._set_locator(yaxis, locator, which)
 
     # Plot series and annotations
+
+    def line(
+        self,
+        x: PlotXData,
+        y: PlotYData,
+        *,
+        label: str = "",
+        color: str | None = None,
+        linestyle: LineStyleType | None = None,
+        linewidth: float | None = None,
+        side: AxisSide | Literal["left", "right"] = AxisSide.LEFT,
+        scale: ScaleEnum | Literal["linear", "log"] | None = None,
+    ) -> Line2D:
+        """X/Yと必要な属性だけで系列を追加し、直接編集できるLine2Dを返す。"""
+        axis_side = side if isinstance(side, AxisSide) else AxisSide(side)
+        axis_scale = ScaleEnum(scale) if scale is not None else None
+        self.add_plot(
+            x,
+            PlotInfo(
+                data=y,
+                axis=axis_side,
+                label=label,
+                color=color,
+                linewidth=linewidth,
+                scale=axis_scale,
+            ),
+        )
+        line = self.lines[-1]
+        if linestyle is not None:
+            # PlotInfo.styleの位置引数fmtと異なり、属性名の線種は標準setterで扱う。
+            line.set_linestyle(linestyle)
+        return line
 
     @staticmethod
     def _validate_plot_data(x_data: PlotXData, y_data: PlotYData) -> None:

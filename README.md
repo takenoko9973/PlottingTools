@@ -1,234 +1,252 @@
 # PlottingTools
 
-PlottingTools は、研究データ描画でよく使う matplotlib の処理を簡潔に扱うための
-軽量 wrapper です。`GraphBuilder` を中心に、Figure / Axes の生成からグラフの
-仕上げまでを一貫した API で扱えます。
+PlottingTools は、研究用グラフを少ないコードで作成する Matplotlib ラッパーです。
+X/Y データと必要な属性だけを指定し、共通の外観を `.mplstyle` で管理します。
+左右 Y 軸、対数軸、Mathtext、イベント注釈、SVG 保存、headless 描画に対応します。
 
-公開 API は用途ごとに次の3グループへ分けています。利用側では内部モジュールではなく、
-`plotting_tools` package root から import してください。
+## Windows の共通 Python 環境
 
-| 用途 | 主な API |
-| --- | --- |
-| 折れ線描画 | `GraphBuilder`, `PlotInfo`, `AxisSide`, `ScaleEnum` |
-| 描画スタイル | `PlotStyleConfig` と責務別の `*StyleConfig` |
-| イベント注釈 | `EventDrawer`, `EventPlotConfig`, `EventSpan`, `EventPoint`, `EventLayoutData` |
-
-## 主な機能
-
-- `GraphBuilder` による折れ線グラフの作成
-- 左右 Y 軸のサポート
-- linear / log scale の設定
-- 軸ラベル、タイトル、凡例の設定
-- 不正な mathtext 風ラベルによる描画エラーの回避
-- 型付きイベント設定によるイベント注釈と衝突回避ラベル配置
-
-## インストール
+このリポジトリのルートで、共通環境を一度作成してインストールします。
+`uv` がインストール済みであることが前提です。
 
 ```powershell
-uv pip install -e .
+$sharedEnv = Join-Path $HOME ".venvs\plotting-tools"
+uv venv $sharedEnv --python 3.12
+$pythonPath = Join-Path $sharedEnv "Scripts\python.exe"
+uv pip install --python $pythonPath .
 ```
 
-## 基本的な使い方
+以後は、任意の作業ディレクトリに保存したスクリプトを同じ Python で実行できます。
+スクリプトごとの `# /// script` 宣言や環境の作り直しは不要です。
+
+```powershell
+$pythonPath = Join-Path $HOME ".venvs\plotting-tools\Scripts\python.exe"
+& $pythonPath "E:\Measurements\run\plot_result.py"
+```
+
+ソースを変更した後は、リポジトリのルートでインストールのコマンドを再実行します。
+PlottingTools は通常の Python ライブラリであり、独自ランチャーや CLI は提供しません。
+
+## 最小の描画と SVG 保存
 
 ```python
+from plotting_tools import Plot
+
+with Plot(style="paper") as plot:
+    plot.line(x=[0, 1, 2], y=[1.0, 2.5, 1.5], color="blue", label="Sample A")
+    plot.set_labels("Time (s)", "Voltage (V)")
+    plot.save("result.svg")
+```
+
+`Plot` は `GraphBuilder` の別名です。両者は同じ描画処理を使います。
+`set_labels()` は既存 API を維持しており、系列の凡例ラベル一覧 `plot.labels` と区別します。
+`line()` は編集可能な Matplotlib の `Line2D` を返します。
+
+`save(path, **kwargs)` は layout と保存時にもスタイルを適用します。拡張子に応じて PNG、PDF
+などの Matplotlib 対応形式も利用でき、`dpi` などの保存引数も渡せます。
+context manager は正常終了・例外終了のどちらでも Figure の内容を破棄します。
+手動で管理する場合は保存後に `close()` を呼びます。GUI や `pyplot` の起動は不要です。
+
+## 複数系列とデータ形式
+
+Python のリスト、NumPy 配列、Pandas Series / Index をそのまま渡せます。
+DataFrame の列を使う場合も、通常の列選択で指定します。
+
+```python
+import numpy as np
 import pandas as pd
+from plotting_tools import Plot
 
-from plotting_tools import AxisSide, GraphBuilder, PlotInfo, ScaleEnum
-
-df = pd.DataFrame({"x": [0, 1, 2, 3], "y": [1.0, 2.0, 1.5, 3.0]})
-
-with GraphBuilder() as builder:
-    builder.set_title("Example")
-    builder.set_labels("x", "y")
-    builder.add_plot(
-        df["x"],
-        PlotInfo(
-            data=df["y"],
-            axis=AxisSide.LEFT,
-            label="sample",
-            scale=ScaleEnum.LINEAR,
-        ),
-    )
-    builder.finalize().savefig("example.svg")
+samples = pd.DataFrame({"time": [0, 1, 2], "voltage": [1.0, 2.0, 1.5]})
+with Plot() as plot:
+    plot.line(samples["time"], samples["voltage"], color="tab:blue", label="Sample A")
+    plot.line(np.array([0, 1, 2]), np.array([1.5, 2.5, 2.0]),
+              color="tab:red", label="Sample B", linestyle="dashed", linewidth=2.5)
+    plot.set_labels("Time (s)", "Voltage (V)")
+    plot.save("samples.svg")
 ```
 
-`GraphBuilder` は `pyplot` やグローバルbackendに依存せずFigureを生成します。context managerを
-使うと終了時にFigureの内容を破棄するため、batch処理での解放忘れを防げます。context managerを
-使わない場合は、保存後に `builder.close()` を呼んでください。
+色を省略すると、Matplotlib の色サイクルを使います。線種・線幅を省略するとテンプレートに従います。
+`linestyle` は `"--"` などの記号と `"dashed"` などの Matplotlib の線種名を受け取ります。
+X/Y は同じ長さの1次元データとし、読み込みや単位変換は利用側で行います。
 
-## 描画設定
-
-共通の外観は同梱の `paper.mplstyle` で管理します。`GraphBuilder(style="paper")` が既定です。
-`style` には Matplotlib のスタイル名、外部 `.mplstyle` のパス、これらを順に適用するリストを
-指定できます。設定の優先順位は Matplotlib 標準設定、`paper`、選択したスタイル、明示設定です。
-存在しないファイルやスタイル名はエラーになります。
+## 左右 Y 軸と対数軸
 
 ```python
-from plotting_tools import GraphBuilder, PlotInfo
+from plotting_tools import Plot
 
-with GraphBuilder(style=["paper", "my_style.mplstyle"]) as builder:
-    builder.add_plot([0, 1, 2], PlotInfo(data=[1, 3, 2], label="sample"))
-    builder.add_plot([0, 1, 2], PlotInfo(data=[2, 2, 3], linewidth=2.5))
-    builder.set_labels("Time (s)", "Voltage (V)")
-    builder.save("result.svg")
+with Plot() as plot:
+    plot.line([0, 1, 2], [1.0, 2.0, 1.5], label="Voltage", color="tab:blue")
+    plot.line([0, 1, 2], [1e-6, 1e-5, 1e-4], label="Pressure", color="tab:red",
+              side="right", scale="log")
+    plot.line([0, 1, 2], [2e-6, 2e-5, 2e-4], side="right", linestyle=":")
+    plot.set_labels("Time (s)", "Voltage (V)", "Pressure (Pa)")
+    plot.save("dual-axis.svg")
 ```
 
-省略した線幅・線種・フォントなどはテンプレートに従います。`PlotInfo.style` の既定値と
-rcParams で表現できる `*StyleConfig` の外観設定の既定値は `None`（指定なし）になりました。
-Figure の `size` を明示する場合は従来どおりピクセル単位です。軸範囲、凡例の表示有無・列数など、
-グラフ固有の設定は引き続き設定クラスで指定します。
+`side` は `"left"`（既定）/ `"right"` または `AxisSide`、`scale` は `"linear"` / `"log"`
+または `ScaleEnum` を受け取ります。スケールを省略すると現在の設定を保持し、新しい軸は線形です。
+同じ軸への系列追加で対数軸が線形に戻ることはありません。
 
-`builder.save(path, **kwargs)` は layout と保存時にもグラフのスタイルを有効にします。
-SVG のテキスト保持にはテンプレートで `svg.fonttype: none` を指定できます。
-Mathtext などの一部文字はパスになる場合があります。他の Matplotlib 保存形式も利用できます。
-`finalize()` の Figure や `get_axis()` の Axes も従来どおり利用できますが、それらを直接操作する際は
-通常の Matplotlib の設定規則に従います。テンプレートは builder の操作中だけ有効であり、
-`with GraphBuilder(...)` のブロック全体でグローバル設定を変更するものではありません。
+## `.mplstyle` と個別の上書き
 
-`PlotStyleConfig` は明示的な上書きとグラフ固有の設定をまとめます。次の例では、フォント、軸範囲、grid、線幅、
-目盛方向、凡例を一括して指定しています。
+設定の優先順位は、Matplotlib 標準設定 → 同梱 `paper` → 選択したスタイル → 明示設定です。
+既定の `Plot()` は `Plot(style="paper")` と同じです。Matplotlib のスタイル名、外部ファイルの
+パス、これらを順番に適用するリストを指定できます。存在しないスタイルはエラーになります。
+
+次の例はテンプレートを作成し、そのグラフだけに適用します。
 
 ```python
-from plotting_tools import (
-    AxisStyleConfig,
-    GraphBuilder,
-    LegendStyleConfig,
-    LineStyleConfig,
-    PlotStyleConfig,
-    TextStyleConfig,
-)
+from pathlib import Path
+from plotting_tools import Plot
 
-style = PlotStyleConfig(
-    text=TextStyleConfig(
-        font_family="Noto Sans CJK JP",
-        title_options={"fontweight": "bold"},
-        label_options={"color": "#333333"},
-    ),
-    axes=AxisStyleConfig(
-        xlim=(0, 100),
-        left_ylim=(0.05, 2e7),
-        grid=True,
-        tick_direction="inout",
-    ),
-    line=LineStyleConfig(width=2.0),
-    legend=LegendStyleConfig(loc="upper left", ncols=2, frameon=False),
-    strict_mathtext=True,
+Path("lab.mplstyle").write_text(
+    "font.family: DejaVu Sans\n"
+    "font.size: 14\n"
+    "axes.labelsize: 16\n"
+    "lines.linewidth: 1.5\n"
+    "axes.grid: True\n"
+    "svg.fonttype: none\n",
+    encoding="utf-8",
 )
-builder = GraphBuilder(style)
+with Plot(style=["paper", "lab.mplstyle"]) as plot:
+    plot.line([0, 1, 2], [1, 3, 2], label="Template width")
+    plot.line([0, 1, 2], [2, 2, 3], label="Explicit width", linewidth=2.5)
+    plot.set_labels("Time (s)", "Voltage (V)")
+    plot.save("styled.svg")
 ```
 
-固定Y軸範囲は `set_ylim(side, ymin, ymax)`、自動範囲を最低限指定範囲まで広げる場合は
-`expand_ylim_to_include(side, ymin, ymax)` を使います。locator / formatterは
-`set_x_locator()`、`set_y_locator()`、`set_x_formatter()`、`set_y_formatter()` から設定できます。
+省略した属性はテンプレートの値を使います。Figure の大きさ・DPI、フォント、軸・目盛、grid、
+凡例の外観も Matplotlib の rcParams で設定できます。minor tick の表示・分割数には
+`xtick.minor.visible` / `ndivs` と `ytick.minor.visible` / `ndivs` を使います。
 
-凡例は `finalize()` 前でも `create_legend()` で生成して調整できます。設定で
-`LegendStyleConfig(visible=False)` とすると表示しません。不正なmathtextは標準ではwarningを
-出して `[Label Error]` に置換し、`strict_mathtext=True` では `ValueError` を送出します。
+スタイルは各描画操作の間だけ有効で、異なるグラフや無関係な Matplotlib コードへ漏れません。
+生の Figure / Axes を直接操作するときは通常の Matplotlib の設定規則に従います。
+`finalize().savefig(...)` も利用できますが、保存時のテンプレート設定を適用するには `save()` を使います。
 
-`finalize()` は凡例生成や `tight_layout()` の例外をそのまま送出します。
+`svg.fonttype: none` は通常の文字を SVG のテキストとして保持します。Mathtext やフォント処理により
+一部がパスになる場合があり、すべての文字の編集可能性は保証しません。
 
-## 科学表記と軸スケール
+## 軸範囲・目盛・凡例・高度な編集
 
-既定の線形軸は Matplotlib の `ScalarFormatter` により、値域に応じて通常表記と
-共通指数付きの Mathtext 表記を使い分けます。対数軸は Matplotlib 標準の Mathtext
-Formatter を使います。テンプレートの `axes.formatter.use_mathtext: False` も尊重します。
+```python
+from matplotlib.ticker import MultipleLocator
+from plotting_tools import AxisSide, LegendStyleConfig, Plot, PlotStyleConfig
 
-各目盛を個別の科学表記にしたい場合は、既存の Formatter 設定 API を使えます。
+config = PlotStyleConfig(legend=LegendStyleConfig(loc="upper left", frameon=False))
+with Plot(config) as plot:
+    plot.line([0, 1, 2], [1, 2, 1.5], label="Sample")
+    plot.set_xlim(0, 3)
+    plot.set_ylim(AxisSide.LEFT, 0, 4)
+    plot.set_x_locator(MultipleLocator(1))
+    plot.set_y_locator(AxisSide.LEFT, MultipleLocator(1))
+    plot.set_title(r"Signal $\alpha$")
+    plot.set_labels("Time (s)", "Voltage (V)")
+    legend = plot.create_legend()
+    if legend is not None:
+        legend.set_title("Measurement")
+    plot.get_axis().axhline(3, color="gray", linestyle=":")
+    plot.save("configured.svg")
+```
+
+`set_ylim()` は固定範囲を設定します。自動範囲を最低限指定範囲まで広げる場合は
+`expand_ylim_to_include(side, ymin, ymax)` を使います。`LegendStyleConfig(visible=False)` で凡例を
+非表示にできます。`get_axis(AxisSide.RIGHT)` で右軸、`fig` で Figure にアクセスできます。
+`finalize()` は凡例と layout を確定して Figure を返し、明示的に調整済みの凡例を保持します。
+layout や保存のエラーはそのまま送出します。
+
+## 科学表記と Mathtext
+
+線形軸の既定は Matplotlib の `ScalarFormatter` です。通常の値域では通常表記を使い、
+科学表記が必要な値域では軸全体の共通指数を Mathtext で表示します。対数軸には Matplotlib
+標準の Mathtext Formatter を使います。テンプレートの `axes.formatter.use_mathtext: False` も尊重します。
+
+各目盛を個別の科学表記にする場合は、`FuncFormatter` と既存の設定 API を使います。
 
 ```python
 from functools import partial
 from matplotlib.ticker import FuncFormatter
-from plotting_tools import AxisSide, format_sci_mathtext
+from plotting_tools import AxisSide, Plot, format_sci_mathtext
 
-formatter = FuncFormatter(partial(format_sci_mathtext, precision=3))
-builder.set_y_formatter(AxisSide.LEFT, formatter)
-# X軸は set_x_formatter()、右Y軸は AxisSide.RIGHT を指定します。
+with Plot() as plot:
+    plot.line([0, 1, 2], [1e-8, 2e-8, 3e-8])
+    formatter = FuncFormatter(partial(format_sci_mathtext, precision=3))
+    plot.set_y_formatter(AxisSide.LEFT, formatter)
+    plot.set_labels("Time (s)", "Current (A)")
+    plot.save("scientific.svg")
 ```
 
-`precision` は係数の小数桁数で、既定は従来どおり1桁です。丸めで指数が繰り上がる場合も
-係数を正規化します。ゼロは `0`、非有限値は NaN・符号付き無限大として表示します。
-第2位置引数 `pos` は `FuncFormatter` 用に維持しています。
+X 軸には `set_x_formatter()`、右 Y 軸には `AxisSide.RIGHT` を指定します。major / minor は
+`which="major"` / `"minor"` で選択でき、Locator も別々に設定できます。明示した Locator / Formatter は
+後の系列追加、`finalize()`、builder によるスケール変更でも保持します。指定した設定が変更後の
+スケールに適していることは利用側で確認してください。
 
-`PlotInfo.scale` の既定値は `None`（現在のスケールを保持）です。新しい軸は線形になります。
-系列追加で対数軸が線形へ戻ることはありません。明示した Locator / Formatter は、後の
-系列追加、`finalize()`、builder によるスケール変更でも保持します。スケールを変更する場合は、
-指定した Locator / Formatter がそのスケールに適したものであることを確認してください。
-minor tick の表示と分割数もテンプレートの `xtick.minor.*` / `ytick.minor.*` に従います。
+`format_sci_mathtext(x, pos=None, *, precision=1)` の `precision` は係数の小数桁数です。
+丸めで指数が繰り上がる場合も正規化し、最小 subnormal から最大有限値まで扱います。
+ゼロは `0`、非有限値は NaN・符号付き無限大として表示します。`pos` は `FuncFormatter` 用です。
+不正な Mathtext ラベルは警告とともに `[Label Error]` に置換します。
+`PlotStyleConfig(strict_mathtext=True)` では `ValueError` になります。
 
-## イベント注釈
-
-期間は `EventSpan`、時点は `EventPoint` で表します。辞書のキーを実行時に解釈せず、
-必要な値を生成時に確認できる形です。`EventLayoutData` はラベルが左右の系列を避けるために
-必要なデータと軸条件をまとめます。
+## イベント期間・時点の注釈
 
 ```python
 from plotting_tools import (
-    EventDrawer,
-    EventLayoutData,
-    EventPlotConfig,
-    EventPoint,
-    EventSpan,
-    ScaleEnum,
+    AxisSide, EventDrawer, EventLayoutData, EventPlotConfig, EventPoint, EventSpan,
+    Plot, ScaleEnum,
 )
 
-events = EventPlotConfig(
-    colors={"process": "tab:green"},
-    spans=[
-        EventSpan(
-            event="process",
-            start=0.5,
-            end=1.5,
-            label="heating",
-        ),
-    ],
-    points=[
-        EventPoint(
-            event="process",
-            time=2.0,
-            label="measurement",
-        ),
-    ],
-)
-layout_data = EventLayoutData(
-    x=df["x"],
-    primary_y=df["y"],
-    secondary_y=[1e-4, 2e-4, 1.5e-4, 3e-4],
-    primary_scale=ScaleEnum.LINEAR,
-    secondary_scale=ScaleEnum.LOG,
-    secondary_ylim=(1e-5, 1e-3),
-)
-
-EventDrawer(builder, events).draw_events(layout_data)
+x = [0, 1, 2, 3]
+voltage = [1.0, 2.0, 1.5, 3.0]
+pressure = [1e-6, 2e-6, 1e-5, 2e-5]
+with Plot() as plot:
+    plot.line(x, voltage, label="Voltage")
+    plot.line(x, pressure, side="right", scale="log", label="Pressure")
+    plot.set_labels("Time (s)", "Voltage (V)", "Pressure (Pa)")
+    plot.set_ylim(AxisSide.RIGHT, 1e-7, 1e-4)
+    events = EventPlotConfig(
+        colors={"process": "tab:green"},
+        spans=[EventSpan(event="process", start=0.5, end=1.5, label="Heating")],
+        points=[EventPoint(event="process", time=2, label="Measurement")],
+    )
+    layout = EventLayoutData(
+        x=x, primary_y=voltage, secondary_y=pressure,
+        secondary_scale=ScaleEnum.LOG, secondary_ylim=(1e-7, 1e-4),
+    )
+    EventDrawer(plot, events).draw_events(layout)
+    plot.save("events.svg")
 ```
 
-## API整理に伴う変更
+ラベル配置は系列、凡例、イベント境界との衝突を避ける候補を評価します。描画した軸と同じ
+系列・スケール・右軸範囲を `EventLayoutData` に渡してください。イベントラベルの計測と描画は
+同じテンプレートのフォントを使います。
 
-- `PlotInfo` と `PlotInfo.style` は従来どおり利用できます。
-- `EventPlotConfig.spans` / `points` は辞書ではなく `EventSpan` / `EventPoint` を受け取ります。
-- `EventDrawer.draw_events()` の系列情報は個別引数ではなく `EventLayoutData` にまとめました。
-- `LabelItem`、`LabelLayoutEngine`、`LabelPriority` は内部実装となり、package root からは公開しません。
-- `PlotConfig`、`PlotXData`、`PlotYData` は利用者が直接操作するAPIではないため、package root からは公開しません。
-- 旧 `plotting_tools.plot_util` は責務別モジュールへ分割しました。公開 API は package root から import してください。
+## 既存 API と移行点
 
-## このパッケージに含めないもの
+`GraphBuilder`、`PlotInfo`、各 `*StyleConfig` は引き続き package root から import できます。
+`style_config` は第1位置引数、テンプレート選択は keyword-only の `style=` です。
 
-PlottingTools は描画処理を補助するライブラリです。次の処理は含みません。
+```python
+from plotting_tools import GraphBuilder, PlotInfo
 
-- ログファイルの読み込みやデータ形式の変換
-- 保存先やファイル名の自動決定
-- 特定プロジェクトの列名やファイル構造に依存する処理
-- CLI
-- GUI
+with GraphBuilder() as builder:
+    builder.add_plot([0, 1, 2], PlotInfo(data=[1, 3, 2], label="Sample", style="--"))
+    builder.set_labels("Time (s)", "Voltage (V)")
+    builder.save("existing-api.svg")
+```
 
-データの読み込み方法や保存ルールは、利用側のプロジェクトで実装してください。
+- rcParams 対応の外観設定と `PlotInfo.style` の既定値は `None`（指定なし）になりました。
+  明示した値はテンプレートより優先されます。`FigureStyleConfig.size` の明示指定は従来どおりピクセル単位です。
+- `PlotInfo.scale` の既定値は `None`（現在の軸スケールを保持）になりました。
+- 軸範囲、左右の割り当て、凡例の表示有無・列数、イベント情報は個別の設定・操作として維持しています。
+- 旧 `plotting_tools.plot_util` ではなく package root から import してください。
 
 ## 開発
 
 ```powershell
-uv run ruff format .
-uv run ruff check .
-uv run pytest
-uv run ty check
+uv run --locked python -m pytest
+uv run --locked python -m ruff check src tests
+uv run --locked python -m ruff format --check src tests
+uv run --locked python -m ty check
 ```
 
-テストには `pytest`、lint には `ruff`、型チェックには `ty` を使用します。
+データの読み込み・変換、保存先の自動決定、GUI はこのライブラリの対象外です。
