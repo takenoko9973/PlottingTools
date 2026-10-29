@@ -127,6 +127,34 @@ builder = GraphBuilder(style)
 
 `finalize()` は凡例生成や `tight_layout()` の例外をそのまま送出します。
 
+## 科学表記と軸スケール
+
+既定の線形軸は Matplotlib の `ScalarFormatter` により、値域に応じて通常表記と
+共通指数付きの Mathtext 表記を使い分けます。対数軸は Matplotlib 標準の Mathtext
+Formatter を使います。テンプレートの `axes.formatter.use_mathtext: False` も尊重します。
+
+各目盛を個別の科学表記にしたい場合は、既存の Formatter 設定 API を使えます。
+
+```python
+from functools import partial
+from matplotlib.ticker import FuncFormatter
+from plotting_tools import AxisSide, format_sci_mathtext
+
+formatter = FuncFormatter(partial(format_sci_mathtext, precision=3))
+builder.set_y_formatter(AxisSide.LEFT, formatter)
+# X軸は set_x_formatter()、右Y軸は AxisSide.RIGHT を指定します。
+```
+
+`precision` は係数の小数桁数で、既定は従来どおり1桁です。丸めで指数が繰り上がる場合も
+係数を正規化します。ゼロは `0`、非有限値は NaN・符号付き無限大として表示します。
+第2位置引数 `pos` は `FuncFormatter` 用に維持しています。
+
+`PlotInfo.scale` の既定値は `None`（現在のスケールを保持）です。新しい軸は線形になります。
+系列追加で対数軸が線形へ戻ることはありません。明示した Locator / Formatter は、後の
+系列追加、`finalize()`、builder によるスケール変更でも保持します。スケールを変更する場合は、
+指定した Locator / Formatter がそのスケールに適したものであることを確認してください。
+minor tick の表示と分割数もテンプレートの `xtick.minor.*` / `ytick.minor.*` に従います。
+
 ## イベント注釈
 
 期間は `EventSpan`、時点は `EventPoint` で表します。辞書のキーを実行時に解釈せず、

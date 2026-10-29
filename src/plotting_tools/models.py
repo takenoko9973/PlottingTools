@@ -44,7 +44,7 @@ class PlotInfo:
     color: str | None = None
     style: str | None = None
     linewidth: float | None = None
-    scale: ScaleEnum = ScaleEnum.LINEAR
+    scale: ScaleEnum | None = None
 
     def __post_init__(self) -> None:
         """明示された線幅が正値であることを検証する。"""

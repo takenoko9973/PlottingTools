@@ -123,8 +123,14 @@ class GraphBuilder:
 
     def _setup_axis(self, axis: Axes) -> None:
         """Axesへ目盛とgridの既定スタイルを設定する。"""
-        axis.xaxis.set_minor_locator(AutoMinorLocator(5))
-        axis.yaxis.set_minor_locator(AutoMinorLocator(5))
+        # 分割数をグラフの設定で確定し、context外の遅延描画でも同じ間隔を保つ。
+        # ライブラリ既定のlocatorは、scale変更時に標準の対数locatorへ交換できる状態にする。
+        if mpl.rcParams["xtick.minor.visible"]:
+            axis.xaxis.set_minor_locator(AutoMinorLocator(mpl.rcParams["xtick.minor.ndivs"]))
+            axis.xaxis.isDefault_minloc = True
+        if mpl.rcParams["ytick.minor.visible"]:
+            axis.yaxis.set_minor_locator(AutoMinorLocator(mpl.rcParams["ytick.minor.ndivs"]))
+            axis.yaxis.isDefault_minloc = True
 
         tick_options: dict[str, Any] = {}
         if self.style.text.tick_fontsize is not None:
@@ -338,7 +344,29 @@ class GraphBuilder:
         """指定した側のY軸スケールを設定する。"""
         with self._style_context():
             scale_name = scale.value if isinstance(scale, ScaleEnum) else scale
-            self.get_axis(side).set_yscale(scale_name)
+            axis = self.get_axis(side)
+            if axis.get_yscale() == scale_name:
+                return
+
+            yaxis = axis.yaxis
+            custom_formatters: list[tuple[Literal["major", "minor"], Formatter]] = []
+            custom_locators: list[tuple[Literal["major", "minor"], Locator]] = []
+            if not yaxis.isDefault_majfmt:
+                custom_formatters.append(("major", yaxis.get_major_formatter()))
+            if not yaxis.isDefault_minfmt:
+                custom_formatters.append(("minor", yaxis.get_minor_formatter()))
+            if not yaxis.isDefault_majloc:
+                custom_locators.append(("major", yaxis.get_major_locator()))
+            if not yaxis.isDefault_minloc:
+                custom_locators.append(("minor", yaxis.get_minor_locator()))
+
+            # Matplotlibはscale変更時にtickerも初期化する。明示指定だけ復元し、
+            # 既定のtickerにはlinear/logそれぞれの標準実装を使う。
+            axis.set_yscale(scale_name)
+            for which, formatter in custom_formatters:
+                self._set_formatter(yaxis, formatter, which)
+            for which, locator in custom_locators:
+                self._set_locator(yaxis, locator, which)
 
     # Plot series and annotations
 
@@ -364,7 +392,8 @@ class GraphBuilder:
             self._validate_plot_data(x_data, plot_info.data)
 
             target_axis = self.get_axis(plot_info.axis)
-            target_axis.set_yscale(plot_info.scale.value)
+            if plot_info.scale is not None:
+                self.set_yscale(plot_info.axis, plot_info.scale)
             safe_label = self._get_safe_text(plot_info.label)
             linewidth = (
                 plot_info.linewidth if plot_info.linewidth is not None else self.style.line.width

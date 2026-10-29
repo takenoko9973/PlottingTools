@@ -11,3 +11,8 @@ xtick.top: True
 font.size: 16
 legend.fontsize: 10
 lines.linewidth: 1.5
+axes.formatter.use_mathtext: True
+xtick.minor.visible: True
+ytick.minor.visible: True
+xtick.minor.ndivs: 5
+ytick.minor.ndivs: 5
