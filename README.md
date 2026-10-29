@@ -58,7 +58,34 @@ with GraphBuilder() as builder:
 
 ## 描画設定
 
-`PlotStyleConfig` は責務別の設定をまとめます。次の例では、フォント、軸範囲、grid、線幅、
+共通の外観は同梱の `paper.mplstyle` で管理します。`GraphBuilder(style="paper")` が既定です。
+`style` には Matplotlib のスタイル名、外部 `.mplstyle` のパス、これらを順に適用するリストを
+指定できます。設定の優先順位は Matplotlib 標準設定、`paper`、選択したスタイル、明示設定です。
+存在しないファイルやスタイル名はエラーになります。
+
+```python
+from plotting_tools import GraphBuilder, PlotInfo
+
+with GraphBuilder(style=["paper", "my_style.mplstyle"]) as builder:
+    builder.add_plot([0, 1, 2], PlotInfo(data=[1, 3, 2], label="sample"))
+    builder.add_plot([0, 1, 2], PlotInfo(data=[2, 2, 3], linewidth=2.5))
+    builder.set_labels("Time (s)", "Voltage (V)")
+    builder.save("result.svg")
+```
+
+省略した線幅・線種・フォントなどはテンプレートに従います。`PlotInfo.style` の既定値と
+rcParams で表現できる `*StyleConfig` の外観設定の既定値は `None`（指定なし）になりました。
+Figure の `size` を明示する場合は従来どおりピクセル単位です。軸範囲、凡例の表示有無・列数など、
+グラフ固有の設定は引き続き設定クラスで指定します。
+
+`builder.save(path, **kwargs)` は layout と保存時にもグラフのスタイルを有効にします。
+SVG のテキスト保持にはテンプレートで `svg.fonttype: none` を指定できます。
+Mathtext などの一部文字はパスになる場合があります。他の Matplotlib 保存形式も利用できます。
+`finalize()` の Figure や `get_axis()` の Axes も従来どおり利用できますが、それらを直接操作する際は
+通常の Matplotlib の設定規則に従います。テンプレートは builder の操作中だけ有効であり、
+`with GraphBuilder(...)` のブロック全体でグローバル設定を変更するものではありません。
+
+`PlotStyleConfig` は明示的な上書きとグラフ固有の設定をまとめます。次の例では、フォント、軸範囲、grid、線幅、
 目盛方向、凡例を一括して指定しています。
 
 ```python

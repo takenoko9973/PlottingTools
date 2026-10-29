@@ -158,7 +158,7 @@ class LabelLayoutEngine:
         builder: GraphBuilder,
         layout_data: EventLayoutData,
         vertical_lines: list[float],
-        fontsize: int,
+        fontsize: float,
         initial_obstacles: list[Bounds] | None = None,
     ) -> None:
         """描画済み系列と探索条件をNumPy配列として保持する。"""

@@ -42,7 +42,7 @@ class PlotInfo:
     axis: AxisSide = AxisSide.LEFT
     label: str = ""
     color: str | None = None
-    style: str = "-"
+    style: str | None = None
     linewidth: float | None = None
     scale: ScaleEnum = ScaleEnum.LINEAR
 

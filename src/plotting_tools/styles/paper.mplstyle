@@ -1,0 +1,13 @@
+# 共通の研究グラフ用スタイル。個別指定は利用者のテンプレートで上書きする。
+figure.figsize: 9, 5.5
+figure.dpi: 100
+axes.titlesize: 10
+axes.labelsize: 18
+xtick.labelsize: 16
+ytick.labelsize: 16
+xtick.direction: in
+ytick.direction: in
+xtick.top: True
+font.size: 16
+legend.fontsize: 10
+lines.linewidth: 1.5

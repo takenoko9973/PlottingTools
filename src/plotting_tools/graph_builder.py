@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast
 
+import matplotlib as mpl
+import matplotlib.style as mplstyle
 import numpy as np
 import pandas as pd
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -12,10 +15,12 @@ from matplotlib.figure import Figure
 from matplotlib.mathtext import MathTextParser
 from matplotlib.ticker import AutoMinorLocator
 
-from plotting_tools.config import LegendLocation, PlotStyleConfig
+from plotting_tools.config import PlotStyleConfig
 from plotting_tools.models import AxisSide, PlotInfo, PlotXData, PlotYData, ScaleEnum
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
+
     from matplotlib.artist import Artist
     from matplotlib.axes import Axes
     from matplotlib.axis import Axis
@@ -39,11 +44,30 @@ class _RendererCanvas(Protocol):
 class GraphBuilder:
     """左右Y軸を扱う薄いmatplotlib描画wrapper。"""
 
-    def __init__(self, style_config: PlotStyleConfig | None = None) -> None:
+    def __init__(
+        self,
+        style_config: PlotStyleConfig | None = None,
+        *,
+        style: str | Path | list[str | Path] | None = None,
+    ) -> None:
         """Figureと左Y軸を生成し、共通の軸スタイルを適用する。"""
         self.style = style_config or PlotStyleConfig()
+        paper = Path(__file__).with_name("styles") / "paper.mplstyle"
+        if style is None:
+            selected = []
+        elif isinstance(style, list):
+            selected = style
+        else:
+            selected = [style]
+        styles = [paper, *(paper if item == "paper" else item for item in selected)]
+        # 生成時の設定を保持し、後から別のグラフやglobal rcParamsが変わっても分離する。
+        with mplstyle.context(styles, after_reset=True):
+            self._rc_params = dict(mpl.rcParams)
+        # backendはrc_contextで復元されないため、グラフの設定対象に含めない。
+        self._rc_params.pop("backend", None)
         self.fig = self._create_figure()
-        self.ax1 = self.fig.add_subplot()
+        with self._style_context():
+            self.ax1 = self.fig.add_subplot()
         self.ax2: Axes | None = None
 
         self.lines: list[Line2D] = []
@@ -54,19 +78,35 @@ class GraphBuilder:
         }
         self._math_parser = MathTextParser("agg")
 
-        self._setup_axis(self.ax1)
+        with self._style_context():
+            self._setup_axis(self.ax1)
         self._apply_initial_limits()
+
+    def _style_context(self) -> AbstractContextManager[None]:
+        """対象グラフのテンプレートと明示フォントを操作中だけ有効にする。"""
+        params = self._rc_params.copy()
+        if self.style.text.font_family is not None:
+            params["font.family"] = self.style.text.font_family
+        if self.style.axes.grid_which is not None:
+            params["axes.grid.which"] = self.style.axes.grid_which
+        if self.style.axes.grid_axis is not None:
+            params["axes.grid.axis"] = self.style.axes.grid_axis
+        return mpl.rc_context(rc=params)
 
     def _create_figure(self) -> Figure:
         """ピクセル指定をインチへ変換し、headless描画可能なFigureを生成する。"""
-        width_px, height_px = self.style.figure.size
-        dpi = self.style.figure.dpi
-        figure = Figure(
-            figsize=(width_px / dpi, height_px / dpi),
-            dpi=dpi,
-        )
-        FigureCanvasAgg(figure)
-        return figure
+        with self._style_context():
+            options: dict[str, Any] = {}
+            dpi = self.style.figure.dpi
+            if dpi is not None:
+                options["dpi"] = dpi
+            if self.style.figure.size is not None:
+                width_px, height_px = self.style.figure.size
+                effective_dpi = dpi if dpi is not None else mpl.rcParams["figure.dpi"]
+                options["figsize"] = (width_px / effective_dpi, height_px / effective_dpi)
+            figure = Figure(**options)
+            FigureCanvasAgg(figure)
+            return figure
 
     def _apply_initial_limits(self) -> None:
         """スタイルで指定された初期軸範囲を各Axesへ反映する。"""
@@ -86,28 +126,25 @@ class GraphBuilder:
         axis.xaxis.set_minor_locator(AutoMinorLocator(5))
         axis.yaxis.set_minor_locator(AutoMinorLocator(5))
 
-        axis.tick_params(
-            axis="both",
-            which="major",
-            labelsize=self.style.text.tick_fontsize,
-            direction=self.style.axes.tick_direction,
-            top=True,
-        )
-        axis.tick_params(
-            axis="both",
-            which="minor",
-            direction=self.style.axes.tick_direction,
-            top=True,
-        )
+        tick_options: dict[str, Any] = {}
+        if self.style.text.tick_fontsize is not None:
+            tick_options["labelsize"] = self.style.text.tick_fontsize
+        if self.style.axes.tick_direction is not None:
+            tick_options["direction"] = self.style.axes.tick_direction
+        axis.tick_params(axis="both", which="major", **tick_options)
+        tick_options.pop("labelsize", None)
+        axis.tick_params(axis="both", which="minor", **tick_options)
 
-        # grid=Falseで線設定を渡すと、matplotlibがgridを再び有効化するため空dictを渡す。
-        grid_options = self.style.axes.grid_options if self.style.axes.grid else {}
-        axis.grid(
-            self.style.axes.grid,
-            which=self.style.axes.grid_which,
-            axis=self.style.axes.grid_axis,
-            **grid_options,
-        )
+        axes_style = self.style.axes
+        if axes_style.grid is not None or axes_style.grid_options:
+            # grid=Falseで線設定を渡すと再び有効になるため、明示無効時は渡さない。
+            options = axes_style.grid_options if axes_style.grid is not False else {}
+            axis.grid(
+                axes_style.grid,
+                which=axes_style.grid_which or mpl.rcParams["axes.grid.which"],
+                axis=axes_style.grid_axis or mpl.rcParams["axes.grid.axis"],
+                **options,
+            )
 
     def _apply_tick_font(self, axis: Axes) -> None:
         """生成済みの目盛ラベルへ指定フォントを適用する。"""
@@ -153,12 +190,13 @@ class GraphBuilder:
 
     def get_ax2(self) -> Axes:
         """右Y軸を必要になった時点で生成して返す。"""
-        if self.ax2 is None:
-            self.ax2 = self.ax1.twinx()
-            self._setup_axis(self.ax2)
-            self._apply_tick_font(self.ax2)
+        with self._style_context():
+            if self.ax2 is None:
+                self.ax2 = self.ax1.twinx()
+                self._setup_axis(self.ax2)
+                self._apply_tick_font(self.ax2)
 
-        return self.ax2
+            return self.ax2
 
     def get_axis(self, side: AxisSide = AxisSide.LEFT) -> Axes:
         """高度なmatplotlib設定に使う指定側のAxesを返す。"""
@@ -169,40 +207,45 @@ class GraphBuilder:
 
     def set_labels(self, xlabel: str, ylabel_left: str, ylabel_right: str = "") -> None:
         """X軸と左右Y軸のラベルを設定する。"""
-        options: dict[str, Any] = {
-            "fontsize": self.style.text.label_fontsize,
-            **self.style.text.label_options,
-        }
+        with self._style_context():
+            options: dict[str, Any] = {
+                **self.style.text.label_options,
+            }
 
-        xlabel_text = self.ax1.set_xlabel(
-            self._get_safe_text(xlabel),
-            fontdict=options,
-        )
-        left_label_text = self.ax1.set_ylabel(
-            self._get_safe_text(ylabel_left),
-            fontdict=options,
-        )
-        self._apply_font_family(xlabel_text)
-        self._apply_font_family(left_label_text)
+            if self.style.text.label_fontsize is not None:
+                options.setdefault("fontsize", self.style.text.label_fontsize)
 
-        if ylabel_right:
-            right_label_text = self.get_ax2().set_ylabel(
-                self._get_safe_text(ylabel_right),
+            xlabel_text = self.ax1.set_xlabel(
+                self._get_safe_text(xlabel),
                 fontdict=options,
             )
-            self._apply_font_family(right_label_text)
+            left_label_text = self.ax1.set_ylabel(
+                self._get_safe_text(ylabel_left),
+                fontdict=options,
+            )
+            self._apply_font_family(xlabel_text)
+            self._apply_font_family(left_label_text)
+
+            if ylabel_right:
+                right_label_text = self.get_ax2().set_ylabel(
+                    self._get_safe_text(ylabel_right),
+                    fontdict=options,
+                )
+                self._apply_font_family(right_label_text)
 
     def set_title(self, title: str) -> None:
         """mathtextを検証してグラフタイトルを設定する。"""
-        options: dict[str, Any] = {
-            "fontsize": self.style.text.title_fontsize,
-            **self.style.text.title_options,
-        }
-        title_text = self.ax1.set_title(
-            self._get_safe_text(title),
-            fontdict=options,
-        )
-        self._apply_font_family(title_text)
+        with self._style_context():
+            options: dict[str, Any] = {
+                **self.style.text.title_options,
+            }
+            if self.style.text.title_fontsize is not None:
+                options.setdefault("fontsize", self.style.text.title_fontsize)
+            title_text = self.ax1.set_title(
+                self._get_safe_text(title),
+                fontdict=options,
+            )
+            self._apply_font_family(title_text)
 
     def set_xlim(self, xmin: float, xmax: float) -> None:
         """同一値の場合にも幅を持つX軸範囲を設定する。"""
@@ -293,8 +336,9 @@ class GraphBuilder:
 
     def set_yscale(self, side: AxisSide, scale: ScaleEnum | str) -> None:
         """指定した側のY軸スケールを設定する。"""
-        scale_name = scale.value if isinstance(scale, ScaleEnum) else scale
-        self.get_axis(side).set_yscale(scale_name)
+        with self._style_context():
+            scale_name = scale.value if isinstance(scale, ScaleEnum) else scale
+            self.get_axis(side).set_yscale(scale_name)
 
     # Plot series and annotations
 
@@ -316,23 +360,30 @@ class GraphBuilder:
 
     def add_plot(self, x_data: PlotXData, plot_info: PlotInfo) -> None:
         """系列を指定されたY軸へ追加し、凡例情報を保持する。"""
-        self._validate_plot_data(x_data, plot_info.data)
+        with self._style_context():
+            self._validate_plot_data(x_data, plot_info.data)
 
-        target_axis = self.get_axis(plot_info.axis)
-        target_axis.set_yscale(plot_info.scale.value)
-        safe_label = self._get_safe_text(plot_info.label)
-        linewidth = plot_info.linewidth or self.style.line.width
+            target_axis = self.get_axis(plot_info.axis)
+            target_axis.set_yscale(plot_info.scale.value)
+            safe_label = self._get_safe_text(plot_info.label)
+            linewidth = (
+                plot_info.linewidth if plot_info.linewidth is not None else self.style.line.width
+            )
+            options: dict[str, Any] = {}
+            if linewidth is not None:
+                options["linewidth"] = linewidth
+            formats = (plot_info.style,) if plot_info.style is not None else ()
 
-        (line,) = target_axis.plot(
-            x_data,
-            plot_info.data,
-            plot_info.style,
-            color=plot_info.color,
-            label=safe_label,
-            linewidth=linewidth,
-        )
-        self.lines.append(line)
-        self.labels.append(safe_label)
+            (line,) = target_axis.plot(
+                x_data,
+                plot_info.data,
+                *formats,
+                color=plot_info.color,
+                label=safe_label,
+                **options,
+            )
+            self.lines.append(line)
+            self.labels.append(safe_label)
 
     def add_safe_text(
         self,
@@ -343,39 +394,41 @@ class GraphBuilder:
         **kwargs: Any,  # noqa: ANN401
     ) -> Text:
         """無効なmathtextを安全な代替文字列にして配置する。"""
-        axis = self.get_axis(ax_side)
-        font_family = self.style.text.font_family
-        if font_family is not None:
-            kwargs.setdefault("fontfamily", font_family)
+        with self._style_context():
+            axis = self.get_axis(ax_side)
+            font_family = self.style.text.font_family
+            if font_family is not None:
+                kwargs.setdefault("fontfamily", font_family)
 
-        safe_text = self._get_safe_text(text)
-        if safe_text == "[Label Error]":
-            # 壊れたラベルを通常の注釈と誤認しないよう、指定色より赤を優先する。
-            kwargs["color"] = "red"
+            safe_text = self._get_safe_text(text)
+            if safe_text == "[Label Error]":
+                # 壊れたラベルを通常の注釈と誤認しないよう、指定色より赤を優先する。
+                kwargs["color"] = "red"
 
-        return axis.text(x, y, safe_text, **kwargs)
+            return axis.text(x, y, safe_text, **kwargs)
 
     def get_safe_text_dimensions(
         self,
         text: str,
-        fontsize: int,
+        fontsize: float,
         ax_side: AxisSide = AxisSide.LEFT,
     ) -> tuple[float, float]:
         """ラベル配置に使う文字列のデータ幅とAxes相対高さを返す。"""
-        axis = self.get_axis(ax_side)
-        renderer = cast("_RendererCanvas", self.fig.canvas).get_renderer()
-        safe_text = self._get_safe_text(text)
+        with self._style_context():
+            axis = self.get_axis(ax_side)
+            renderer = cast("_RendererCanvas", self.fig.canvas).get_renderer()
+            safe_text = self._get_safe_text(text)
 
-        artist: Artist = axis.text(0, 0, safe_text, fontsize=fontsize)
-        if self.style.text.font_family is not None:
-            artist.set_fontfamily(self.style.text.font_family)
+            artist: Artist = axis.text(0, 0, safe_text, fontsize=fontsize)
+            if self.style.text.font_family is not None:
+                artist.set_fontfamily(self.style.text.font_family)
 
-        bbox_display = artist.get_window_extent(renderer=renderer)
-        bbox_data = bbox_display.transformed(axis.transData.inverted())
-        bbox_axes = bbox_display.transformed(axis.transAxes.inverted())
-        artist.remove()
+            bbox_display = artist.get_window_extent(renderer=renderer)
+            bbox_data = bbox_display.transformed(axis.transData.inverted())
+            bbox_axes = bbox_display.transformed(axis.transAxes.inverted())
+            artist.remove()
 
-        return float(bbox_data.width), float(bbox_axes.height)
+            return float(bbox_data.width), float(bbox_axes.height)
 
     # Finalization and resource cleanup
 
@@ -397,53 +450,37 @@ class GraphBuilder:
 
     def create_legend(self) -> Legend | None:
         """現在の系列と設定から凡例を生成し、事前調整可能な状態で返す。"""
-        current_legend = self.ax1.get_legend()
-        if not self.style.legend.visible:
-            if current_legend is not None:
-                current_legend.remove()
-            return None
+        with self._style_context():
+            current_legend = self.ax1.get_legend()
+            if not self.style.legend.visible:
+                if current_legend is not None:
+                    current_legend.remove()
+                return None
 
-        legend_items = [
-            (line, label) for line, label in zip(self.lines, self.labels, strict=True) if label
-        ]
-        if not legend_items:
-            return None
+            legend_items = [
+                (line, label) for line, label in zip(self.lines, self.labels, strict=True) if label
+            ]
+            if not legend_items:
+                return None
 
-        legend_lines, legend_labels = zip(*legend_items, strict=True)
-        # 既存APIと同様、options内の重複キーを個別設定より優先してmatplotlibへ渡す。
-        additional_options = self.style.legend.options.copy()
-        legend_location = cast(
-            "LegendLocation",
-            additional_options.pop("loc", self.style.legend.loc),
-        )
-        legend_columns = cast(
-            "int",
-            additional_options.pop("ncols", self.style.legend.ncols),
-        )
-        legend_frame = cast(
-            "bool",
-            additional_options.pop("frameon", self.style.legend.frameon),
-        )
-        legend_fontsize = cast(
-            "int",
-            additional_options.pop("fontsize", self.style.legend.fontsize),
-        )
-        legend = self.ax1.legend(
-            legend_lines,
-            legend_labels,
-            loc=legend_location,
-            ncols=legend_columns,
-            frameon=legend_frame,
-            fontsize=legend_fontsize,
-            **additional_options,
-        )
+            legend_lines, legend_labels = zip(*legend_items, strict=True)
+            # 既存APIと同様、options内の重複キーを個別設定より優先してmatplotlibへ渡す。
+            options: dict[str, Any] = {"ncols": self.style.legend.ncols}
+            explicit_options = (
+                ("loc", self.style.legend.loc),
+                ("frameon", self.style.legend.frameon),
+                ("fontsize", self.style.legend.fontsize),
+            )
+            options.update({key: value for key, value in explicit_options if value is not None})
+            options.update(self.style.legend.options)
+            legend = self.ax1.legend(legend_lines, legend_labels, **options)
 
-        font_family = self.style.text.font_family
-        if font_family is not None:
-            for text in legend.get_texts():
-                text.set_fontfamily(font_family)
+            font_family = self.style.text.font_family
+            if font_family is not None:
+                for text in legend.get_texts():
+                    text.set_fontfamily(font_family)
 
-        return legend
+            return legend
 
     def _finalize_legend(self) -> None:
         """表示設定に従って既存凡例の削除または凡例生成を行う。"""
@@ -459,26 +496,33 @@ class GraphBuilder:
 
     def finalize(self) -> Figure:
         """軸範囲、凡例、layoutを確定してFigureを返す。"""
-        self.adjust_axes_limits()
-        self._apply_tick_font(self.ax1)
+        with self._style_context():
+            self.adjust_axes_limits()
+            self._apply_tick_font(self.ax1)
 
-        if self.ax2 is not None:
-            self._apply_tick_font(self.ax2)
+            if self.ax2 is not None:
+                self._apply_tick_font(self.ax2)
 
-        self._finalize_legend()
-        self.fig.tight_layout()
-        return self.fig
+            self._finalize_legend()
+            self.fig.tight_layout()
+            return self.fig
+
+    def save(self, path: str | Path, **kwargs: Any) -> None:  # noqa: ANN401
+        """layoutと保存時にもテンプレートを有効にしてMatplotlib形式で保存する。"""
+        with self._style_context():
+            self.finalize().savefig(path, **kwargs)
 
     def close(self) -> None:
         """Figureが保持するArtistを破棄してbatch処理でのメモリ保持を防ぐ。"""
-        self.lines.clear()
-        self.labels.clear()
+        with self._style_context():
+            self.lines.clear()
+            self.labels.clear()
 
-        if self.ax2 is not None:
-            self.ax2.clear()
+            if self.ax2 is not None:
+                self.ax2.clear()
 
-        self.ax1.clear()
-        self.fig.clear()
+            self.ax1.clear()
+            self.fig.clear()
 
     def __enter__(self) -> Self:
         """Context manager内で同じGraphBuilderを返す。"""

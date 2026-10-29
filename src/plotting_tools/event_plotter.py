@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl
+
 from plotting_tools._label_layout import (
     Bounds,
     LabelItem,
@@ -34,8 +36,6 @@ class EventDrawer:
     STYLE_EVENT_POINT = ":"
     # 時点イベントの縦線透明度 (0から1の範囲、単位なし)。
     ALPHA_EVENT_POINT = 0.8
-    # イベントラベルの文字サイズ (matplotlibのpoint単位)。
-    FONTSIZE_EVENT_LABEL = 16
 
     def __init__(
         self,
@@ -195,7 +195,7 @@ class EventDrawer:
                 item.final_y,
                 display_label,
                 color=item.color,
-                fontsize=self.FONTSIZE_EVENT_LABEL,
+                fontsize=float(mpl.rcParams["font.size"]),
                 ha=item.horizontal_alignment,
                 va=item.vertical_alignment,
                 transform=self.builder.ax1.get_xaxis_transform(),
@@ -207,27 +207,28 @@ class EventDrawer:
         extra_spans: Sequence[EventSpan] | None = None,
     ) -> None:
         """イベントを描画し、系列と重ならない候補位置へラベルを配置する。"""
-        spans = [*self.config.spans, *(extra_spans or [])]
-        labels = self._draw_spans(spans)
-        labels.extend(self._draw_points())
+        with self.builder._style_context():  # noqa: SLF001
+            spans = [*self.config.spans, *(extra_spans or [])]
+            labels = self._draw_spans(spans)
+            labels.extend(self._draw_points())
 
-        if not labels:
-            return
+            if not labels:
+                return
 
-        initial_obstacles: list[Bounds] = []
-        legend_obstacle = self._get_legend_obstacle()
-        if legend_obstacle is not None:
-            initial_obstacles.append(legend_obstacle)
+            initial_obstacles: list[Bounds] = []
+            legend_obstacle = self._get_legend_obstacle()
+            if legend_obstacle is not None:
+                initial_obstacles.append(legend_obstacle)
 
-        engine = LabelLayoutEngine(
-            builder=self.builder,
-            layout_data=layout_data,
-            vertical_lines=self._collect_vertical_lines(spans),
-            fontsize=self.FONTSIZE_EVENT_LABEL,
-            initial_obstacles=initial_obstacles,
-        )
-        engine.compute_layout(labels)
-        self._draw_labels(labels)
+            engine = LabelLayoutEngine(
+                builder=self.builder,
+                layout_data=layout_data,
+                vertical_lines=self._collect_vertical_lines(spans),
+                fontsize=float(mpl.rcParams["font.size"]),
+                initial_obstacles=initial_obstacles,
+            )
+            engine.compute_layout(labels)
+            self._draw_labels(labels)
 
 
 __all__ = [
