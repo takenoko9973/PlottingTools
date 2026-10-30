@@ -3,6 +3,7 @@
 PlottingTools は、研究用グラフを少ないコードで作成する Matplotlib ラッパーです。
 X/Y データと必要な属性だけを指定し、共通の外観を `.mplstyle` で管理します。
 左右 Y 軸、対数軸、Mathtext、イベント注釈、SVG 保存、headless 描画に対応します。
+公開 API の引数、入力条件、互換性を含む詳細は[公開仕様書](docs/SPECIFICATION.md)を参照してください。
 
 ## Windows の共通 Python 環境
 
@@ -46,6 +47,26 @@ with Plot(style="paper") as plot:
 などの Matplotlib 対応形式も利用でき、`dpi` などの保存引数も渡せます。
 context manager は正常終了・例外終了のどちらでも Figure の内容を破棄します。
 手動で管理する場合は保存後に `close()` を呼びます。GUI や `pyplot` の起動は不要です。
+
+## Figure・Axes の寸法と散布図
+
+`fig_size` は Figure 全体、`axes_size` は描画領域の寸法をインチで指定します。散布図は
+`scatter()` で追加できます。Line の `markersize` はポイント単位、Scatter の `s` はポイントの二乗単位です。
+
+```python
+from plotting_tools import Plot
+
+with Plot(fig_size=(6, 4)) as figure_plot:
+    figure_plot.line([0, 1, 2], [1, 3, 2], marker="o", markersize=5)
+    figure_plot.save("figure-size.svg")
+
+with Plot(axes_size=(4, 3)) as axes_plot:
+    axes_plot.scatter([0, 1, 2], [1, 3, 2], s=[16, 36, 64], label="Sample")
+    axes_plot.save("axes-size.svg")
+```
+
+`axes_size` では目盛やラベルなどの余白を含めて Figure が拡大します。寸法の優先順位と制約は
+[公開仕様書](docs/SPECIFICATION.md)に記載しています。
 
 ## 複数系列とデータ形式
 
