@@ -1,18 +1,29 @@
 # 共通の研究グラフ用スタイル。個別指定は利用者のテンプレートで上書きする。
-figure.figsize: 9, 5.5
+figure.figsize: 8, 5.5
 figure.dpi: 100
+
 axes.titlesize: 10
 axes.labelsize: 18
 xtick.labelsize: 16
 ytick.labelsize: 16
+font.size: 16
+legend.fontsize: 10
+
+lines.linewidth: 1.5
+axes.formatter.use_mathtext: True
+
 xtick.direction: in
 ytick.direction: in
 xtick.top: True
-font.size: 16
-legend.fontsize: 10
-lines.linewidth: 1.5
-axes.formatter.use_mathtext: True
+ytick.right: True
+# 副メモリ表示
 xtick.minor.visible: True
 ytick.minor.visible: True
+# メモリの長さ
+xtick.major.size: 5
+ytick.major.size: 5
+xtick.minor.size: 3
+ytick.minor.size: 3
+# 副軸の数
 xtick.minor.ndivs: 5
 ytick.minor.ndivs: 5
