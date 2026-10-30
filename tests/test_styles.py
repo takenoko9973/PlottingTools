@@ -12,9 +12,7 @@ from plotting_tools import (
     EventPlotConfig,
     EventPoint,
     GraphBuilder,
-    LineStyleConfig,
     PlotInfo,
-    PlotStyleConfig,
 )
 
 
@@ -54,8 +52,8 @@ def test_template_and_explicit_series_priority(template: Path) -> None:
         assert legend.get_texts()[0].get_fontsize() == pytest.approx(17)
         assert legend.get_frame_on() is False
         assert any(line.get_visible() for line in builder.ax1.get_xgridlines())
-    with GraphBuilder(PlotStyleConfig(line=LineStyleConfig(width=5)), style=template) as builder:
-        builder.add_plot([0, 1], PlotInfo(data=[1, 2]))
+    with GraphBuilder(style=template) as builder:
+        builder.add_plot([0, 1], PlotInfo(data=[1, 2], linewidth=5))
         assert builder.lines[0].get_linewidth() == pytest.approx(5)
 
 

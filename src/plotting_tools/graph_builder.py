@@ -19,7 +19,7 @@ from matplotlib.ticker import AutoMinorLocator
 from mpl_toolkits.axes_grid1.axes_divider import Divider
 from mpl_toolkits.axes_grid1.axes_size import Fixed
 
-from plotting_tools.config import PlotStyleConfig
+from plotting_tools._style_groups import AxisStyleGroup, LegendStyleGroup, TitleStyleGroup
 from plotting_tools.models import AxisSide, PlotInfo, PlotXData, PlotYData, ScaleEnum
 
 if TYPE_CHECKING:
@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 
     from matplotlib.artist import Artist
     from matplotlib.axes import Axes
-    from matplotlib.axis import Axis
     from matplotlib.backend_bases import RendererBase
     from matplotlib.collections import PathCollection
     from matplotlib.legend import Legend
@@ -53,11 +52,11 @@ class GraphBuilder:
 
     def __init__(
         self,
-        style_config: PlotStyleConfig | None = None,
         *,
         style: str | Path | list[str | Path] | None = None,
         fig_size: tuple[float, float] | None = None,
         axes_size: tuple[float, float] | None = None,
+        strict_mathtext: bool = False,
     ) -> None:
         """Figureと左Y軸を生成する。fig_size/axes_sizeは排他的なインチ寸法。"""
         if fig_size is not None and axes_size is not None:
@@ -65,7 +64,7 @@ class GraphBuilder:
             raise ValueError(msg)
         self._fig_size = self._validate_size("fig_size", fig_size)
         self._axes_size = self._validate_size("axes_size", axes_size)
-        self.style = style_config or PlotStyleConfig()
+        self.strict_mathtext = strict_mathtext
         paper = Path(__file__).with_name("styles") / "paper.mplstyle"
         if style is None:
             selected = []
@@ -82,6 +81,7 @@ class GraphBuilder:
         self.fig = self._create_figure()
         with self._style_context():
             self.ax1 = self.fig.add_subplot()
+            self._title_text = self.ax1.set_title("")
         self.ax2: Axes | None = None
 
         self.lines: list[Line2D] = []
@@ -95,7 +95,11 @@ class GraphBuilder:
 
         with self._style_context():
             self._setup_axis(self.ax1)
-        self._apply_initial_limits()
+        self.x = AxisStyleGroup(self, "x")
+        self.y = AxisStyleGroup(self, "y")
+        self.right_y = AxisStyleGroup(self, "right_y")
+        self.title = TitleStyleGroup(self._title_text)
+        self.legend = LegendStyleGroup(self)
         if self._axes_size is not None:
             self._position_fixed_axes(0, 0, 0, 0)
 
@@ -118,47 +122,20 @@ class GraphBuilder:
 
     def _style_context(self) -> AbstractContextManager[None]:
         """対象グラフのテンプレートと明示フォントを操作中だけ有効にする。"""
-        params = self._rc_params.copy()
-        if self.style.text.font_family is not None:
-            params["font.family"] = self.style.text.font_family
-        if self.style.axes.grid_which is not None:
-            params["axes.grid.which"] = self.style.axes.grid_which
-        if self.style.axes.grid_axis is not None:
-            params["axes.grid.axis"] = self.style.axes.grid_axis
-        return mpl.rc_context(rc=params)
+        return mpl.rc_context(rc=self._rc_params)
 
     def _create_figure(self) -> Figure:
-        """明示インチ寸法、従来pixel寸法、styleの順でFigure寸法を解決する。"""
+        """明示インチ寸法またはstyleのFigure寸法で作成する。"""
         with self._style_context():
-            options: dict[str, Any] = {}
-            dpi = self.style.figure.dpi
-            if dpi is not None:
-                options["dpi"] = dpi
-            if self._fig_size is not None or self._axes_size is not None:
-                options["figsize"] = self._fig_size or self._axes_size
-            elif self.style.figure.size is not None:
-                width_px, height_px = self.style.figure.size
-                effective_dpi = dpi if dpi is not None else mpl.rcParams["figure.dpi"]
-                options["figsize"] = (width_px / effective_dpi, height_px / effective_dpi)
-            figure = Figure(**options)
+            figure = Figure(figsize=self._fig_size or self._axes_size)
             FigureCanvasAgg(figure)
             return figure
 
-    def _apply_initial_limits(self) -> None:
-        """スタイルで指定された初期軸範囲を各Axesへ反映する。"""
-        axes_style = self.style.axes
-
-        if axes_style.xlim is not None:
-            self.ax1.set_xlim(*axes_style.xlim)
-
-        if axes_style.left_ylim is not None:
-            self.set_ylim(AxisSide.LEFT, *axes_style.left_ylim)
-
-        if axes_style.right_ylim is not None:
-            self.set_ylim(AxisSide.RIGHT, *axes_style.right_ylim)
-
     def _setup_axis(self, axis: Axes) -> None:
         """Axesへ目盛とgridの既定スタイルを設定する。"""
+        # 文字列更新ではTextの属性を維持するため、rcParamsのラベル位置は生成時に解決する。
+        axis.set_xlabel("")
+        axis.set_ylabel("")
         # 分割数をグラフの設定で確定し、context外の遅延描画でも同じ間隔を保つ。
         # ライブラリ既定のlocatorは、scale変更時に標準の対数locatorへ交換できる状態にする。
         if mpl.rcParams["xtick.minor.visible"]:
@@ -167,36 +144,6 @@ class GraphBuilder:
         if mpl.rcParams["ytick.minor.visible"]:
             axis.yaxis.set_minor_locator(AutoMinorLocator(mpl.rcParams["ytick.minor.ndivs"]))
             axis.yaxis.isDefault_minloc = True
-
-        tick_options: dict[str, Any] = {}
-        if self.style.text.tick_fontsize is not None:
-            tick_options["labelsize"] = self.style.text.tick_fontsize
-        if self.style.axes.tick_direction is not None:
-            tick_options["direction"] = self.style.axes.tick_direction
-        axis.tick_params(axis="both", which="major", **tick_options)
-        tick_options.pop("labelsize", None)
-        axis.tick_params(axis="both", which="minor", **tick_options)
-
-        axes_style = self.style.axes
-        if axes_style.grid is not None or axes_style.grid_options:
-            # grid=Falseで線設定を渡すと再び有効になるため、明示無効時は渡さない。
-            options = axes_style.grid_options if axes_style.grid is not False else {}
-            axis.grid(
-                axes_style.grid,
-                which=axes_style.grid_which or mpl.rcParams["axes.grid.which"],
-                axis=axes_style.grid_axis or mpl.rcParams["axes.grid.axis"],
-                **options,
-            )
-
-    def _apply_tick_font(self, axis: Axes) -> None:
-        """生成済みの目盛ラベルへ指定フォントを適用する。"""
-        font_family = self.style.text.font_family
-        if font_family is None:
-            return
-
-        tick_labels = (*axis.get_xticklabels(), *axis.get_yticklabels())
-        for label in tick_labels:
-            label.set_fontfamily(font_family)
 
     def _is_valid_mathtext(self, text: str) -> bool:
         """matplotlibのmathtext parserで文字列を事前検証する。"""
@@ -216,17 +163,11 @@ class GraphBuilder:
             return text
 
         msg = f"invalid mathtext: {text!r}"
-        if self.style.strict_mathtext:
+        if self.strict_mathtext:
             raise ValueError(msg)
 
         warnings.warn(msg, UserWarning, stacklevel=3)
         return "[Label Error]"
-
-    def _apply_font_family(self, text: Text) -> None:
-        """fontdict経由では型が不安定なfont familyをTextへ直接設定する。"""
-        font_family = self.style.text.font_family
-        if font_family is not None:
-            text.set_fontfamily(font_family)
 
     # Axes access and configuration
 
@@ -236,7 +177,6 @@ class GraphBuilder:
             if self.ax2 is None:
                 self.ax2 = self.ax1.twinx()
                 self._setup_axis(self.ax2)
-                self._apply_tick_font(self.ax2)
 
             return self.ax2
 
@@ -248,46 +188,15 @@ class GraphBuilder:
         return self.get_ax2()
 
     def set_labels(self, xlabel: str, ylabel_left: str, ylabel_right: str = "") -> None:
-        """X軸と左右Y軸のラベルを設定する。"""
-        with self._style_context():
-            options: dict[str, Any] = {
-                **self.style.text.label_options,
-            }
-
-            if self.style.text.label_fontsize is not None:
-                options.setdefault("fontsize", self.style.text.label_fontsize)
-
-            xlabel_text = self.ax1.set_xlabel(
-                self._get_safe_text(xlabel),
-                fontdict=options,
-            )
-            left_label_text = self.ax1.set_ylabel(
-                self._get_safe_text(ylabel_left),
-                fontdict=options,
-            )
-            self._apply_font_family(xlabel_text)
-            self._apply_font_family(left_label_text)
-
-            if ylabel_right:
-                right_label_text = self.get_ax2().set_ylabel(
-                    self._get_safe_text(ylabel_right),
-                    fontdict=options,
-                )
-                self._apply_font_family(right_label_text)
+        """外観を維持してX軸と左右Y軸のラベル文字列を設定する。"""
+        self.ax1.xaxis.label.set_text(self._get_safe_text(xlabel))
+        self.ax1.yaxis.label.set_text(self._get_safe_text(ylabel_left))
+        if ylabel_right:
+            self.get_ax2().yaxis.label.set_text(self._get_safe_text(ylabel_right))
 
     def set_title(self, title: str) -> None:
-        """mathtextを検証してグラフタイトルを設定する。"""
-        with self._style_context():
-            options: dict[str, Any] = {
-                **self.style.text.title_options,
-            }
-            if self.style.text.title_fontsize is not None:
-                options.setdefault("fontsize", self.style.text.title_fontsize)
-            title_text = self.ax1.set_title(
-                self._get_safe_text(title),
-                fontdict=options,
-            )
-            self._apply_font_family(title_text)
+        """外観を維持して検証済みのタイトル文字列を設定する。"""
+        self._title_text.set_text(self._get_safe_text(title))
 
     def set_xlim(self, xmin: float, xmax: float) -> None:
         """同一値の場合にも幅を持つX軸範囲を設定する。"""
@@ -314,68 +223,6 @@ class GraphBuilder:
 
         self._base_ylim[side] = (ymin, ymax)
 
-    @staticmethod
-    def _set_locator(
-        axis: Axis,
-        locator: Locator,
-        which: Literal["major", "minor"],
-    ) -> None:
-        """指定されたmajor/minor側へlocatorを設定する。"""
-        if which == "major":
-            axis.set_major_locator(locator)
-        else:
-            axis.set_minor_locator(locator)
-
-    def set_x_locator(
-        self,
-        locator: Locator,
-        *,
-        which: Literal["major", "minor"] = "major",
-    ) -> None:
-        """X軸のmajor/minor locatorを設定する。"""
-        self._set_locator(self.ax1.xaxis, locator, which)
-
-    def set_y_locator(
-        self,
-        side: AxisSide,
-        locator: Locator,
-        *,
-        which: Literal["major", "minor"] = "major",
-    ) -> None:
-        """指定Y軸のmajor/minor locatorを設定する。"""
-        self._set_locator(self.get_axis(side).yaxis, locator, which)
-
-    @staticmethod
-    def _set_formatter(
-        axis: Axis,
-        formatter: Formatter,
-        which: Literal["major", "minor"],
-    ) -> None:
-        """指定されたmajor/minor側へformatterを設定する。"""
-        if which == "major":
-            axis.set_major_formatter(formatter)
-        else:
-            axis.set_minor_formatter(formatter)
-
-    def set_x_formatter(
-        self,
-        formatter: Formatter,
-        *,
-        which: Literal["major", "minor"] = "major",
-    ) -> None:
-        """X軸のmajor/minor formatterを設定する。"""
-        self._set_formatter(self.ax1.xaxis, formatter, which)
-
-    def set_y_formatter(
-        self,
-        side: AxisSide,
-        formatter: Formatter,
-        *,
-        which: Literal["major", "minor"] = "major",
-    ) -> None:
-        """指定Y軸のmajor/minor formatterを設定する。"""
-        self._set_formatter(self.get_axis(side).yaxis, formatter, which)
-
     def set_yscale(self, side: AxisSide, scale: ScaleEnum | str) -> None:
         """指定した側のY軸スケールを設定する。"""
         with self._style_context():
@@ -400,9 +247,15 @@ class GraphBuilder:
             # 既定のtickerにはlinear/logそれぞれの標準実装を使う。
             axis.set_yscale(scale_name)
             for which, formatter in custom_formatters:
-                self._set_formatter(yaxis, formatter, which)
+                if which == "major":
+                    yaxis.set_major_formatter(formatter)
+                else:
+                    yaxis.set_minor_formatter(formatter)
             for which, locator in custom_locators:
-                self._set_locator(yaxis, locator, which)
+                if which == "major":
+                    yaxis.set_major_locator(locator)
+                else:
+                    yaxis.set_minor_locator(locator)
 
     # Plot series and annotations
 
@@ -502,9 +355,7 @@ class GraphBuilder:
             if plot_info.scale is not None:
                 self.set_yscale(plot_info.axis, plot_info.scale)
             safe_label = self._get_safe_text(plot_info.label)
-            linewidth = (
-                plot_info.linewidth if plot_info.linewidth is not None else self.style.line.width
-            )
+            linewidth = plot_info.linewidth
             options: dict[str, Any] = {}
             if linewidth is not None:
                 options["linewidth"] = linewidth
@@ -533,10 +384,6 @@ class GraphBuilder:
         """無効なmathtextを安全な代替文字列にして配置する。"""
         with self._style_context():
             axis = self.get_axis(ax_side)
-            font_family = self.style.text.font_family
-            if font_family is not None:
-                kwargs.setdefault("fontfamily", font_family)
-
             safe_text = self._get_safe_text(text)
             if safe_text == "[Label Error]":
                 # 壊れたラベルを通常の注釈と誤認しないよう、指定色より赤を優先する。
@@ -557,9 +404,6 @@ class GraphBuilder:
             safe_text = self._get_safe_text(text)
 
             artist: Artist = axis.text(0, 0, safe_text, fontsize=fontsize)
-            if self.style.text.font_family is not None:
-                artist.set_fontfamily(self.style.text.font_family)
-
             bbox_display = artist.get_window_extent(renderer=renderer)
             bbox_data = bbox_display.transformed(axis.transData.inverted())
             bbox_axes = bbox_display.transformed(axis.transAxes.inverted())
@@ -586,47 +430,9 @@ class GraphBuilder:
             )
 
     def create_legend(self) -> Legend | None:
-        """現在の系列と設定から凡例を生成し、事前調整可能な状態で返す。"""
+        """凡例を現在の系列から生成し、編集可能なLegendを返す。"""
         with self._style_context():
-            current_legend = self.ax1.get_legend()
-            if not self.style.legend.visible:
-                if current_legend is not None:
-                    current_legend.remove()
-                return None
-
-            legend_items = [
-                (handle, label)
-                for handle, label in zip(self._legend_handles, self.labels, strict=True)
-                if label
-            ]
-            if not legend_items:
-                return None
-
-            legend_handles, legend_labels = zip(*legend_items, strict=True)
-            # 既存APIと同様、options内の重複キーを個別設定より優先してmatplotlibへ渡す。
-            options: dict[str, Any] = {"ncols": self.style.legend.ncols}
-            explicit_options = (
-                ("loc", self.style.legend.loc),
-                ("frameon", self.style.legend.frameon),
-                ("fontsize", self.style.legend.fontsize),
-            )
-            options.update({key: value for key, value in explicit_options if value is not None})
-            options.update(self.style.legend.options)
-            legend = self.ax1.legend(legend_handles, legend_labels, **options)
-
-            font_family = self.style.text.font_family
-            if font_family is not None:
-                for text in legend.get_texts():
-                    text.set_fontfamily(font_family)
-
-            return legend
-
-    def _finalize_legend(self) -> None:
-        """表示設定に従って既存凡例の削除または凡例生成を行う。"""
-        current_legend = self.ax1.get_legend()
-
-        if current_legend is None or not self.style.legend.visible:
-            self.create_legend()
+            return self.legend._create(self._legend_handles, self.labels)  # noqa: SLF001
 
     def _position_fixed_axes(self, left: float, right: float, bottom: float, top: float) -> None:
         """装飾の余白とAxesをインチ単位で配置する。"""
@@ -678,12 +484,8 @@ class GraphBuilder:
         """軸範囲、凡例、layoutを確定してFigureを返す。"""
         with self._style_context():
             self.adjust_axes_limits()
-            self._apply_tick_font(self.ax1)
-
-            if self.ax2 is not None:
-                self._apply_tick_font(self.ax2)
-
-            self._finalize_legend()
+            if self.ax1.get_legend() is None:
+                self.create_legend()
             if self._axes_size is None:
                 self.fig.tight_layout()
             else:

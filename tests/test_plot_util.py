@@ -12,15 +12,9 @@ from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from plotting_tools import (
     AxisSide,
-    AxisStyleConfig,
-    FigureStyleConfig,
     GraphBuilder,
-    LegendStyleConfig,
-    LineStyleConfig,
     PlotInfo,
-    PlotStyleConfig,
     ScaleEnum,
-    TextStyleConfig,
 )
 
 
@@ -165,10 +159,12 @@ def test_invalid_mathtext_does_not_raise() -> None:
     assert builder.ax1.get_title() == "[Label Error]"
 
 
-def test_graph_builder_applies_font_family_to_all_text() -> None:
+def test_graph_builder_applies_font_family_to_all_text(tmp_path: Path) -> None:
     """スタイルAPIのフォント指定が主要なテキスト要素へ反映されることを確認する。"""
     font_family = "DejaVu Serif"
-    builder = GraphBuilder(PlotStyleConfig(text=TextStyleConfig(font_family=font_family)))
+    template = tmp_path / "font.mplstyle"
+    template.write_text(f"font.family: {font_family}\n", encoding="utf-8")
+    builder = GraphBuilder(style=template)
     builder.set_title("title")
     builder.set_labels("x", "left", "right")
     builder.add_plot(
@@ -189,21 +185,6 @@ def test_graph_builder_applies_font_family_to_all_text() -> None:
     legend = builder.ax1.get_legend()
     assert legend is not None
     assert all(text.get_fontfamily() == [font_family] for text in legend.get_texts())
-
-
-@pytest.mark.parametrize(
-    ("size", "dpi", "message"),
-    [
-        ((0, 100), 100, "figure size"),
-        ((900, 550), -1, "dpi must be positive"),
-    ],
-)
-def test_figure_style_rejects_non_positive_values(
-    size: tuple[int, int], dpi: int, message: str
-) -> None:
-    """不正なFigure設定を生成時に拒否することを確認する。"""
-    with pytest.raises(ValueError, match=message):
-        FigureStyleConfig(size=size, dpi=dpi)
 
 
 def test_set_ylim_sets_strict_limits() -> None:
@@ -235,9 +216,9 @@ def test_locator_and_formatter_api() -> None:
     y_locator = MultipleLocator(5)
     formatter = FuncFormatter(lambda value, _position: f"{value:g}")
 
-    builder.set_x_locator(x_locator)
-    builder.set_y_locator(AxisSide.RIGHT, y_locator)
-    builder.set_y_formatter(AxisSide.RIGHT, formatter)
+    builder.x.style(major_locator=x_locator)
+    builder.right_y.style(major_locator=y_locator)
+    builder.right_y.style(major_formatter=formatter)
 
     assert builder.ax1.xaxis.get_major_locator() is x_locator
     assert builder.get_axis(AxisSide.RIGHT).yaxis.get_major_locator() is y_locator
@@ -248,21 +229,14 @@ def test_legend_style_and_early_creation() -> None:
     """凡例をfinalize前に生成でき、設定が反映されることを確認する。"""
     legend_fontsize = 12
     borderaxespad = 0.75
-    style = PlotStyleConfig(
-        legend=LegendStyleConfig(
-            loc="upper left",
-            ncols=2,
-            frameon=False,
-            fontsize=legend_fontsize,
-            options={"borderaxespad": borderaxespad},
-        )
-    )
-    builder = GraphBuilder(style)
+    builder = GraphBuilder()
+    builder.legend.style(loc="upper left", ncols=2, frame=False, font_size=legend_fontsize)
     builder.add_plot([0, 1], PlotInfo(data=[1.0, 2.0], label="sample"))
 
     legend = builder.create_legend()
     assert legend is not None
     legend.set_title("custom")
+    legend.borderaxespad = borderaxespad
     builder.finalize()
 
     assert builder.ax1.get_legend() is legend
@@ -278,7 +252,8 @@ def test_legend_style_and_early_creation() -> None:
 
 def test_legend_can_be_disabled() -> None:
     """設定から凡例を非表示にできることを確認する。"""
-    builder = GraphBuilder(PlotStyleConfig(legend=LegendStyleConfig(visible=False)))
+    builder = GraphBuilder()
+    builder.legend.style(visible=False)
     builder.add_plot([0, 1], PlotInfo(data=[1.0, 2.0], label="sample"))
 
     builder.finalize()
@@ -302,7 +277,7 @@ def test_finalize_propagates_layout_errors(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_strict_mathtext_raises() -> None:
     """Strict modeでは不正mathtextを即時拒否することを確認する。"""
-    builder = GraphBuilder(PlotStyleConfig(strict_mathtext=True))
+    builder = GraphBuilder(strict_mathtext=True)
 
     with pytest.raises(ValueError, match="invalid mathtext"):
         builder.set_title(r"$\frac{broken$")
@@ -310,14 +285,13 @@ def test_strict_mathtext_raises() -> None:
 
 def test_style_applies_axis_grid_line_and_title_options() -> None:
     """責務別設定が軸、線、個別テキストへ反映されることを確認する。"""
-    style = PlotStyleConfig(
-        axes=AxisStyleConfig(grid=True, xlim=(0.0, 2.0), left_ylim=(0.0, 5.0)),
-        line=LineStyleConfig(width=3.0),
-        text=TextStyleConfig(title_options={"color": "red"}),
-    )
-    builder = GraphBuilder(style)
+    builder = GraphBuilder()
+    builder.set_xlim(0, 2)
+    builder.set_ylim(AxisSide.LEFT, 0, 5)
+    builder.x.style(grid=True)
+    builder.title.style(color="red")
     builder.set_title("title")
-    builder.add_plot([0, 1], PlotInfo(data=[1.0, 2.0]))
+    builder.add_plot([0, 1], PlotInfo(data=[1.0, 2.0], linewidth=3))
 
     assert builder.ax1.get_xlim() == pytest.approx((0.0, 2.0))
     assert builder.ax1.get_ylim() == pytest.approx((0.0, 5.0))
@@ -328,13 +302,12 @@ def test_style_applies_axis_grid_line_and_title_options() -> None:
 
 def test_grid_options_are_ignored_when_grid_is_disabled() -> None:
     """grid無効時は線設定によるwarningやgrid有効化が起きないことを確認する。"""
-    style = PlotStyleConfig(
-        axes=AxisStyleConfig(grid=False, grid_options={"color": "red"}),
-    )
-
+    builder = GraphBuilder()
+    builder.ax1.grid(color="red")
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
-        builder = GraphBuilder(style)
+        builder.x.style(grid=False)
+        builder.y.style(grid=False)
 
     gridlines = builder.ax1.get_xgridlines() + builder.ax1.get_ygridlines()
     assert not any(line.get_visible() for line in gridlines)

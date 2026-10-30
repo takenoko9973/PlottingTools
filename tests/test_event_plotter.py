@@ -12,10 +12,8 @@ from plotting_tools import (
     EventPlotConfig,
     EventPoint,
     EventSpan,
-    FigureStyleConfig,
     GraphBuilder,
     PlotInfo,
-    PlotStyleConfig,
     ScaleEnum,
 )
 
@@ -26,7 +24,7 @@ def test_event_drawer_draws_annotations_without_raising() -> None:
     x_data = pd.Series([0.0, 1.0, 2.0, 3.0])
     main_data = pd.Series([1.0, 2.0, 1.5, 3.0])
     pressure_data = pd.Series([1e-4, 2e-4, 1.5e-4, 3e-4])
-    builder = GraphBuilder(PlotStyleConfig(figure=FigureStyleConfig(size=(640, 480))))
+    builder = GraphBuilder(fig_size=(6.4, 4.8))
     builder.add_plot(x_data, PlotInfo(data=main_data, label="sample"))
     builder.add_plot(
         x_data,
@@ -117,6 +115,56 @@ def test_event_span_rejects_reversed_range() -> None:
         EventSpan(event="process", start=2.0, end=1.0)
 
 
+@pytest.mark.parametrize("visible", [False, True])
+def test_legend_visibility_and_temporary_measurement(visible: bool) -> None:
+    """凡例設定と注釈の衝突回避を一致させ、測定後の追加系列も凡例に含める。"""
+    with GraphBuilder() as builder:
+        builder.line([0, 1, 2], [1, 1, 1], label="First")
+        builder.set_ylim(AxisSide.LEFT, 0, 2)
+        builder.legend.style(visible=visible, loc="upper center", font_size=14, frame=False)
+        config = EventPlotConfig(points=[EventPoint(event="process", time=1, label="Measurement")])
+        EventDrawer(builder, config).draw_events(
+            EventLayoutData(
+                x=[0, 1, 2],
+                primary_y=[1, 1, 1],
+                secondary_y=[float("nan")] * 3,
+                secondary_ylim=(0, 1),
+            )
+        )
+        assert builder.ax1.get_legend() is None
+        if visible:
+            measured_legend = builder.create_legend()
+            assert measured_legend is not None
+            builder.fig.canvas.draw()
+            assert not measured_legend.get_window_extent().overlaps(
+                builder.ax1.texts[0].get_window_extent()
+            )
+            measured_legend.remove()
+        builder.scatter([0, 1, 2], [1, 1, 1], label="Later")
+        builder.finalize().canvas.draw()
+        legend = builder.ax1.get_legend()
+        if not visible:
+            assert legend is None
+            return
+        assert legend is not None
+        assert [text.get_text() for text in legend.get_texts()] == ["First", "Later"]
+        assert legend.get_texts()[0].get_fontsize() == pytest.approx(14)
+        assert legend.get_frame_on() is False
+
+
+def test_event_annotations_honor_strict_mathtext() -> None:
+    """イベントラベルも独立した厳密検証フラグに従う。"""
+    with GraphBuilder(strict_mathtext=True) as builder:
+        builder.line([0, 1], [1, 2])
+        events = EventPlotConfig(points=[EventPoint(event="event", time=0.5, label=r"$\frac{bad$")])
+        with pytest.raises(ValueError, match="invalid mathtext"):
+            EventDrawer(builder, events).draw_events(
+                EventLayoutData(
+                    x=[0, 1], primary_y=[1, 2], secondary_y=[1, 2], secondary_ylim=(0, 3)
+                )
+            )
+
+
 def test_event_layout_rejects_different_lengths() -> None:
     """ラベル配置用系列の長さが一致しない場合に拒否することを確認する。"""
     with pytest.raises(ValueError, match="must have the same length"):
@@ -138,8 +186,7 @@ def test_event_labels_avoid_data_on_inverted_primary_axis(
     """反転した主軸でもデータ線の実際の表示位置を避けて注釈を配置する。"""
     template = tmp_path / "annotation.mplstyle"
     template.write_text("font.family: DejaVu Sans\nfont.size: 12\n", encoding="utf-8")
-    style = PlotStyleConfig(figure=FigureStyleConfig(size=(900, 550), dpi=100))
-    with GraphBuilder(style, style=template) as builder:
+    with GraphBuilder(fig_size=(9, 5.5), style=template) as builder:
         builder.add_plot([0, 1, 2], PlotInfo(data=[value] * 3, scale=scale))
         builder.ax1.set_ylim(*limits)
         EventDrawer(

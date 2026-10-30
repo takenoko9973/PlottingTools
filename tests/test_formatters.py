@@ -80,9 +80,9 @@ def test_later_series_preserve_scale_formatter_and_locator(scale: ScaleEnum) -> 
             formatter = FuncFormatter(lambda value, _pos: f"custom {value:g}")
             locator = MultipleLocator(1)
             xformatter = FuncFormatter(lambda value, _pos: f"x {value:g}")
-            builder.set_y_formatter(side, formatter)
-            builder.set_y_locator(side, locator)
-            builder.set_x_formatter(xformatter)
+            group = builder.y if side is AxisSide.LEFT else builder.right_y
+            group.style(major_formatter=formatter, major_locator=locator)
+            builder.x.style(major_formatter=xformatter)
             builder.add_plot([1, 2], PlotInfo(data=[1, 2], axis=side))
             builder.add_plot([1, 2], PlotInfo(data=[2, 3], axis=side, scale=scale))
             builder.finalize()
@@ -115,8 +115,8 @@ def test_template_formatter_and_minor_locator_settings(tmp_path: Path) -> None:
     with GraphBuilder(style=path) as builder:
         builder.set_xlim(0, 2)
         builder.set_ylim(AxisSide.LEFT, 0, 2)
-        builder.set_x_locator(MultipleLocator(1))
-        builder.set_y_locator(AxisSide.LEFT, MultipleLocator(1))
+        builder.x.style(major_locator=MultipleLocator(1))
+        builder.y.style(major_locator=MultipleLocator(1))
         builder.finalize().canvas.draw()
         assert not builder.ax1.xaxis.get_major_formatter().get_useMathText()
         assert builder.ax1.xaxis.get_minorticklocs() == pytest.approx([0.5, 1.5])
@@ -134,10 +134,13 @@ def test_explicit_scale_transition_preserves_custom_tickers() -> None:
             minor = FuncFormatter(lambda value, _pos: f"minor {value:g}")
             major_locator = MultipleLocator(1)
             minor_locator = MultipleLocator(0.25)
-            builder.set_y_formatter(side, major)
-            builder.set_y_formatter(side, minor, which="minor")
-            builder.set_y_locator(side, major_locator)
-            builder.set_y_locator(side, minor_locator, which="minor")
+            group = builder.y if side is AxisSide.LEFT else builder.right_y
+            group.style(
+                major_formatter=major,
+                minor_formatter=minor,
+                major_locator=major_locator,
+                minor_locator=minor_locator,
+            )
             builder.add_plot([1, 2], PlotInfo(data=[1, 2], axis=side, scale=ScaleEnum.LOG))
             assert axis.yaxis.get_major_formatter() is major
             assert axis.yaxis.get_minor_formatter() is minor

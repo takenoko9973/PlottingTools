@@ -160,7 +160,7 @@ class EventDrawer:
 
     def _get_legend_obstacle(self) -> Bounds | None:
         """凡例が占有する領域をラベル配置用の座標系で返す。"""
-        if not any(self.builder.labels) or not self.builder.style.legend.visible:
+        if not any(self.builder.labels) or not self.builder.legend.visible:
             return None
 
         existing_legend = self.builder.ax1.get_legend()

@@ -11,9 +11,7 @@ from plotting_tools import (
     EventLayoutData,
     EventPlotConfig,
     EventPoint,
-    FigureStyleConfig,
     Plot,
-    PlotStyleConfig,
 )
 
 
@@ -34,22 +32,16 @@ def test_mutually_exclusive_sizes() -> None:
         Plot(fig_size=(4, 3), axes_size=(3, 2))
 
 
-@pytest.mark.parametrize("dpi", [None, 160])
-def test_size_precedence_and_dpi(tmp_path: Path, dpi: int | None) -> None:
+@pytest.mark.parametrize("dpi", [80, 160])
+def test_size_precedence_and_dpi(tmp_path: Path, dpi: int) -> None:
     """寸法指定の優先順位とDPIに依存しないインチ出力を確認する。"""
     template = tmp_path / "size.mplstyle"
-    template.write_text("figure.figsize: 7, 4\nfigure.dpi: 80\n", encoding="utf-8")
-    config = PlotStyleConfig(figure=FigureStyleConfig(size=(800, 480), dpi=dpi))
-    effective_dpi = dpi or 80
+    template.write_text(f"figure.figsize: 7, 4\nfigure.dpi: {dpi}\n", encoding="utf-8")
+    effective_dpi = dpi
     with Plot(style=template) as plot:
         plot.finalize()
         assert plot.fig.get_size_inches() == pytest.approx((7, 4))
-    with Plot(config, style=template) as plot:
-        plot.finalize()
-        assert plot.fig.get_size_inches() == pytest.approx(
-            (800 / effective_dpi, 480 / effective_dpi)
-        )
-    with Plot(config, style=template, fig_size=(5, 3)) as plot:
+    with Plot(style=template, fig_size=(5, 3)) as plot:
         plot.finalize()
         plot.fig.canvas.draw()
         assert plot.fig.bbox.size / effective_dpi == pytest.approx((5, 3))
@@ -58,7 +50,7 @@ def test_size_precedence_and_dpi(tmp_path: Path, dpi: int | None) -> None:
         root = ET.parse(output).getroot()  # noqa: S314
         assert float(root.attrib["width"].removesuffix("pt")) / 72 == pytest.approx(5)
         assert float(root.attrib["height"].removesuffix("pt")) / 72 == pytest.approx(3)
-    with Plot(config, style=template, axes_size=(3, 2)) as plot:
+    with Plot(style=template, axes_size=(3, 2)) as plot:
         plot.finalize()
         plot.fig.canvas.draw()
         assert plot.ax1.bbox.size / effective_dpi == pytest.approx((3, 2))
@@ -88,9 +80,9 @@ def test_fixed_axes_decorations_and_repeat_svg(tmp_path: Path) -> None:
         plot.finalize()
         first_size = plot.fig.get_size_inches().copy()
         # 確定後の装飾変更でも、Axesを縮めずFigureを拡張する。
-        plot.ax1.xaxis.label.set_fontsize(28)
-        plot.ax1.yaxis.label.set_fontsize(28)
-        plot.ax1.title.set_fontsize(24)
+        plot.x.style(label_size=28)
+        plot.y.style(label_size=28)
+        plot.title.style(font_size=24)
         plot.finalize()
         assert plot.fig.get_size_inches()[1] > first_size[1]
         size = plot.fig.get_size_inches().copy()
