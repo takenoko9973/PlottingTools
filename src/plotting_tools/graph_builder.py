@@ -59,12 +59,15 @@ class GraphBuilder:
         strict_mathtext: bool = False,
     ) -> None:
         """Figureと左Y軸を生成する。fig_size/axes_sizeは排他的なインチ寸法。"""
+        # 入力を検証し、後のFigure生成で使う寸法を確定する。
         if fig_size is not None and axes_size is not None:
             msg = "fig_size and axes_size cannot be specified together"
             raise ValueError(msg)
         self._fig_size = self._validate_size("fig_size", fig_size)
         self._axes_size = self._validate_size("axes_size", axes_size)
         self.strict_mathtext = strict_mathtext
+
+        # Matplotlib標準、同梱paper、利用者指定の順に設定を重ねて保存する。
         paper = Path(__file__).with_name("styles") / "paper.mplstyle"
         if style is None:
             selected = []
@@ -73,17 +76,21 @@ class GraphBuilder:
         else:
             selected = [style]
         styles = [paper, *(paper if item == "paper" else item for item in selected)]
+
         # 生成時の設定を保持し、後から別のグラフやglobal rcParamsが変わっても分離する。
         with mplstyle.context(styles, after_reset=True):
             self._rc_params = dict(mpl.rcParams)
         # backendはrc_contextで復元されないため、グラフの設定対象に含めない。
         self._rc_params.pop("backend", None)
+
+        # Figureと左Axesを作り、タイトルArtistは後から文字列だけ更新できるよう保持する。
         self.fig = self._create_figure()
         with self._style_context():
             self.ax1 = self.fig.add_subplot()
             self._title_text = self.ax1.set_title("")
         self.ax2: Axes | None = None
 
+        # 描画系列、凡例の順序、軸範囲の基準を個別に記録する。
         self.lines: list[Line2D] = []
         self._legend_handles: list[Line2D | PathCollection] = []
         self.labels: list[str] = []
@@ -91,8 +98,10 @@ class GraphBuilder:
             AxisSide.LEFT: None,
             AxisSide.RIGHT: None,
         }
+
         self._math_parser = MathTextParser("agg")
 
+        # 軸の既定動作を設定してから、公開する薄いスタイルグループを用意する。
         with self._style_context():
             self._setup_axis(self.ax1)
         self.x = AxisStyleGroup(self, "x")
@@ -100,6 +109,7 @@ class GraphBuilder:
         self.right_y = AxisStyleGroup(self, "right_y")
         self.title = TitleStyleGroup(self._title_text)
         self.legend = LegendStyleGroup(self)
+
         if self._axes_size is not None:
             self._position_fixed_axes(0, 0, 0, 0)
 
@@ -108,16 +118,19 @@ class GraphBuilder:
         """インチ寸法を正の有限実数2つとして検証する。"""
         if size is None:
             return None
+
         msg = f"{name} must contain two positive finite numbers"
         try:
             width, height = size
         except (TypeError, ValueError) as exc:
             raise ValueError(msg) from exc
+
         if any(
             not isinstance(value, Real) or not isfinite(value) or value <= 0
             for value in (width, height)
         ):
             raise ValueError(msg)
+
         return float(width), float(height)
 
     def _style_context(self) -> AbstractContextManager[None]:
@@ -132,10 +145,11 @@ class GraphBuilder:
             return figure
 
     def _setup_axis(self, axis: Axes) -> None:
-        """Axesへ目盛とgridの既定スタイルを設定する。"""
+        """Axesのラベル位置と補助目盛の既定値を設定する。"""
         # 文字列更新ではTextの属性を維持するため、rcParamsのラベル位置は生成時に解決する。
         axis.set_xlabel("")
         axis.set_ylabel("")
+
         # 分割数をグラフの設定で確定し、context外の遅延描画でも同じ間隔を保つ。
         # ライブラリ既定のlocatorは、scale変更時に標準の対数locatorへ交換できる状態にする。
         if mpl.rcParams["xtick.minor.visible"]:
@@ -191,6 +205,7 @@ class GraphBuilder:
         """外観を維持してX軸と左右Y軸のラベル文字列を設定する。"""
         self.ax1.xaxis.label.set_text(self._get_safe_text(xlabel))
         self.ax1.yaxis.label.set_text(self._get_safe_text(ylabel_left))
+
         if ylabel_right:
             self.get_ax2().yaxis.label.set_text(self._get_safe_text(ylabel_right))
 
@@ -226,11 +241,13 @@ class GraphBuilder:
     def set_yscale(self, side: AxisSide, scale: ScaleEnum | str) -> None:
         """指定した側のY軸スケールを設定する。"""
         with self._style_context():
+            # 既に指定スケールならtickerを触らず終了する。
             scale_name = scale.value if isinstance(scale, ScaleEnum) else scale
             axis = self.get_axis(side)
             if axis.get_yscale() == scale_name:
                 return
 
+            # Matplotlibのscale変更でtickerが置き換わるため、利用者が指定したものだけ退避する。
             yaxis = axis.yaxis
             custom_formatters: list[tuple[Literal["major", "minor"], Formatter]] = []
             custom_locators: list[tuple[Literal["major", "minor"], Locator]] = []
@@ -243,9 +260,9 @@ class GraphBuilder:
             if not yaxis.isDefault_minloc:
                 custom_locators.append(("minor", yaxis.get_minor_locator()))
 
-            # Matplotlibはscale変更時にtickerも初期化する。明示指定だけ復元し、
-            # 既定のtickerにはlinear/logそれぞれの標準実装を使う。
+            # scaleに合わせて既定tickerを更新し、利用者指定のtickerだけ元へ戻す。
             axis.set_yscale(scale_name)
+
             for which, formatter in custom_formatters:
                 if which == "major":
                     yaxis.set_major_formatter(formatter)
@@ -276,6 +293,8 @@ class GraphBuilder:
         """X/Yと必要な属性だけで系列を追加し、直接編集できるLine2Dを返す。"""
         axis_side = side if isinstance(side, AxisSide) else AxisSide(side)
         axis_scale = ScaleEnum(scale) if scale is not None else None
+
+        # 共通の系列検証・作成処理を使い、個別のLine属性を後から設定する。
         self.add_plot(
             x,
             PlotInfo(
@@ -288,6 +307,7 @@ class GraphBuilder:
             ),
         )
         line = self.lines[-1]
+
         if linestyle is not None:
             # PlotInfo.styleの位置引数fmtと異なり、属性名の線種は標準setterで扱う。
             line.set_linestyle(linestyle)
@@ -295,6 +315,7 @@ class GraphBuilder:
             line.set_marker(marker)
         if markersize is not None:
             line.set_markersize(markersize)
+
         return line
 
     def scatter(
@@ -312,12 +333,16 @@ class GraphBuilder:
         """X/Yを指定したY軸へ散布図として追加し、編集可能なcollectionを返す。"""
         axis_side = side if isinstance(side, AxisSide) else AxisSide(side)
         axis_scale = ScaleEnum(scale) if scale is not None else None
+
         with self._style_context():
+            # 入力と対象軸を確定し、必要なら描画前にスケールを切り替える。
             self._validate_plot_data(x, y)
             target_axis = self.get_axis(axis_side)
             if axis_scale is not None:
                 self.set_yscale(axis_side, axis_scale)
             safe_label = self._get_safe_text(label)
+
+            # Scatter Artistを作り、凡例の系列順と表示ラベルを記録する。
             points = target_axis.scatter(
                 x,
                 y,
@@ -328,6 +353,7 @@ class GraphBuilder:
             )
             self._legend_handles.append(points)
             self.labels.append(safe_label)
+
             return points
 
     @staticmethod
@@ -349,12 +375,15 @@ class GraphBuilder:
     def add_plot(self, x_data: PlotXData, plot_info: PlotInfo) -> None:
         """系列を指定されたY軸へ追加し、凡例情報を保持する。"""
         with self._style_context():
+            # 入力と描画先を確定し、PlotInfoで指定されたscaleを適用する。
             self._validate_plot_data(x_data, plot_info.data)
 
             target_axis = self.get_axis(plot_info.axis)
             if plot_info.scale is not None:
                 self.set_yscale(plot_info.axis, plot_info.scale)
             safe_label = self._get_safe_text(plot_info.label)
+
+            # 指定値だけをMatplotlibへ渡して線を作成する。
             linewidth = plot_info.linewidth
             options: dict[str, Any] = {}
             if linewidth is not None:
@@ -369,6 +398,8 @@ class GraphBuilder:
                 label=safe_label,
                 **options,
             )
+
+            # 描画履歴と凡例情報を同じ追加順で保存する。
             self.lines.append(line)
             self._legend_handles.append(line)
             self.labels.append(safe_label)
@@ -399,10 +430,12 @@ class GraphBuilder:
     ) -> tuple[float, float]:
         """ラベル配置に使う文字列のデータ幅とAxes相対高さを返す。"""
         with self._style_context():
+            # 対象Axesと描画rendererを取得し、検証済みの文字列を作る。
             axis = self.get_axis(ax_side)
             renderer = cast("_RendererCanvas", self.fig.canvas).get_renderer()
             safe_text = self._get_safe_text(text)
 
+            # 一時Textのbboxから幅・高さを別々の座標系で計算し、測定用Artistを残さない。
             artist: Artist = axis.text(0, 0, safe_text, fontsize=fontsize)
             bbox_display = artist.get_window_extent(renderer=renderer)
             bbox_data = bbox_display.transformed(axis.transData.inverted())
@@ -437,8 +470,12 @@ class GraphBuilder:
     def _position_fixed_axes(self, left: float, right: float, bottom: float, top: float) -> None:
         """装飾の余白とAxesをインチ単位で配置する。"""
         assert self._axes_size is not None
+
+        # Figureの寸法は余白とAxesの実寸から決める。
         width, height = self._axes_size
         self.fig.set_size_inches(left + width + right, bottom + height + top)
+
+        # DividerでAxes位置を固定し、左右Y軸へ同じlocatorを設定する。
         divider = Divider(
             self.fig,
             (0, 0, 1, 1),
@@ -455,11 +492,14 @@ class GraphBuilder:
         """Axesの実寸を保ち、装飾が収まるFigure寸法を描画結果から決める。"""
         # tight/constrained layoutによる再配置を避け、inch固定のlocatorに委ねる。
         self.fig.set_layout_engine("none")
+
         # tight_layout既定と同じfont sizeの1.08倍を外周の余白として確保する。
         pad = 1.08 * self._rc_params["font.size"] / 72
         # 毎回同じ寸法から測り直し、finalize/saveによる余白の累積を防ぐ。
         self._position_fixed_axes(pad, pad, pad, pad)
         self.fig.canvas.draw()
+
+        # 描画後のtight bboxから装飾がAxesの外へ出た量を測る。
         renderer = cast("_RendererCanvas", self.fig.canvas).get_renderer()
         axes_bbox = self.ax1.bbox
         left = right = bottom = top = 0.0
@@ -473,23 +513,30 @@ class GraphBuilder:
             right = max(right, bounds.x1 - axes_bbox.x1)
             bottom = max(bottom, axes_bbox.y0 - bounds.y0)
             top = max(top, bounds.y1 - axes_bbox.y1)
+
         # bboxは描画pixel、Fixedはinch。保存backendのDPI変更時も実寸を保つ。
         dpi = self.fig.dpi
         self._position_fixed_axes(
             left / dpi + pad, right / dpi + pad, bottom / dpi + pad, top / dpi + pad
         )
+
+        # 更新後のFigure上でAxes位置を確定させる。
         self.fig.canvas.draw()
 
     def finalize(self) -> Figure:
         """軸範囲、凡例、layoutを確定してFigureを返す。"""
         with self._style_context():
+            # 基準範囲を反映し、未生成の凡例だけを作る。
             self.adjust_axes_limits()
             if self.ax1.get_legend() is None:
                 self.create_legend()
+
+            # Figure寸法指定に応じて、通常layoutかAxes固定layoutを適用する。
             if self._axes_size is None:
                 self.fig.tight_layout()
             else:
                 self._layout_fixed_axes()
+
             return self.fig
 
     def save(self, path: str | Path, **kwargs: Any) -> None:  # noqa: ANN401
@@ -500,10 +547,12 @@ class GraphBuilder:
     def close(self) -> None:
         """Figureが保持するArtistを破棄してbatch処理でのメモリ保持を防ぐ。"""
         with self._style_context():
+            # Python側で保持している系列・凡例参照を先に解放する。
             self.lines.clear()
             self._legend_handles.clear()
             self.labels.clear()
 
+            # 軸Artistを消してからFigure全体を空にする。
             if self.ax2 is not None:
                 self.ax2.clear()
 
