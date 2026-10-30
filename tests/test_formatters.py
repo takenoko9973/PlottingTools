@@ -38,12 +38,14 @@ from plotting_tools import AxisSide, GraphBuilder, PlotInfo, ScaleEnum, format_s
     ],
 )
 def test_scientific_values_are_normalized_and_renderable(value: float, expected: str) -> None:
+    """有限値と特殊値の科学表記が期待どおりで描画可能なことを確認する。"""
     result = format_sci_mathtext(value, 0)
     assert result == expected
     MathTextParser("agg").parse(result)
 
 
 def test_scientific_precision_works_with_native_funcformatter() -> None:
+    """指定精度の科学表記と不正精度の拒否を確認する。"""
     formatter = FuncFormatter(partial(format_sci_mathtext, precision=3))
     assert formatter(1.23456e-8, 0) == r"$1.235 \times 10^{-8}$"
     assert format_sci_mathtext(99.99, precision=0) == r"$1 \times 10^{2}$"
@@ -52,6 +54,7 @@ def test_scientific_precision_works_with_native_funcformatter() -> None:
 
 
 def test_automatic_mathtext_for_x_and_both_y_axes() -> None:
+    """X軸と左右Y軸が指数をMathtextで表示することを確認する。"""
     with GraphBuilder() as builder:
         builder.add_plot([1e-8, 2e-8, 3e-8], PlotInfo(data=[1e9, 2e9, 3e9]))
         builder.add_plot([1e-8, 2e-8, 3e-8], PlotInfo(data=[1e-8, 2e-8, 3e-8], axis=AxisSide.RIGHT))
@@ -70,6 +73,7 @@ def test_automatic_mathtext_for_x_and_both_y_axes() -> None:
 
 @pytest.mark.parametrize("scale", [ScaleEnum.LINEAR, ScaleEnum.LOG])
 def test_later_series_preserve_scale_formatter_and_locator(scale: ScaleEnum) -> None:
+    """系列追加後も明示した軸設定を保持することを確認する。"""
     with GraphBuilder() as builder:
         for side in AxisSide:
             builder.set_yscale(side, scale)
@@ -90,6 +94,7 @@ def test_later_series_preserve_scale_formatter_and_locator(scale: ScaleEnum) -> 
 
 
 def test_log_axis_retains_native_mathtext_formatter() -> None:
+    """対数軸がMatplotlibの書式と補助目盛を保持することを確認する。"""
     with GraphBuilder() as builder:
         builder.add_plot([1, 2], PlotInfo(data=[1e-8, 1e-2], scale=ScaleEnum.LOG))
         builder.add_plot([1, 2], PlotInfo(data=[1e-7, 1e-1]))
@@ -100,6 +105,7 @@ def test_log_axis_retains_native_mathtext_formatter() -> None:
 
 
 def test_template_formatter_and_minor_locator_settings(tmp_path: Path) -> None:
+    """テンプレートの指数書式と補助目盛間隔が反映されることを確認する。"""
     path = tmp_path / "ticks.mplstyle"
     path.write_text(
         "axes.formatter.use_mathtext: False\nxtick.minor.ndivs: 2\n"
@@ -120,6 +126,7 @@ def test_template_formatter_and_minor_locator_settings(tmp_path: Path) -> None:
 
 
 def test_explicit_scale_transition_preserves_custom_tickers() -> None:
+    """軸種変更で利用者指定の目盛と書式を失わないことを確認する。"""
     with GraphBuilder() as builder:
         for side in AxisSide:
             axis = builder.get_axis(side)
@@ -139,6 +146,7 @@ def test_explicit_scale_transition_preserves_custom_tickers() -> None:
 
 
 def test_template_can_disable_minor_ticks(tmp_path: Path) -> None:
+    """テンプレートから補助目盛を無効化できることを確認する。"""
     path = tmp_path / "no-minor.mplstyle"
     path.write_text("xtick.minor.visible: False\nytick.minor.visible: False\n", encoding="utf-8")
     with GraphBuilder(style=path) as builder:

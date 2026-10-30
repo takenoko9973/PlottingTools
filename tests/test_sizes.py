@@ -23,17 +23,20 @@ from plotting_tools import (
     [(0, 2), (-1, 2), (1, float("inf")), (float("nan"), 2), (1,), (1, 2, 3), ("a", 2), 3],
 )
 def test_invalid_inch_sizes(name: str, size: object) -> None:
+    """不正なインチ寸法を拒否することを確認する。"""
     with pytest.raises(ValueError, match=name):
         Plot(**{name: size})
 
 
 def test_mutually_exclusive_sizes() -> None:
+    """Figure寸法とAxes寸法の同時指定を拒否することを確認する。"""
     with pytest.raises(ValueError, match=r"fig_size.*axes_size"):
         Plot(fig_size=(4, 3), axes_size=(3, 2))
 
 
 @pytest.mark.parametrize("dpi", [None, 160])
 def test_size_precedence_and_dpi(tmp_path: Path, dpi: int | None) -> None:
+    """寸法指定の優先順位とDPIに依存しないインチ出力を確認する。"""
     template = tmp_path / "size.mplstyle"
     template.write_text("figure.figsize: 7, 4\nfigure.dpi: 80\n", encoding="utf-8")
     config = PlotStyleConfig(figure=FigureStyleConfig(size=(800, 480), dpi=dpi))
@@ -62,6 +65,7 @@ def test_size_precedence_and_dpi(tmp_path: Path, dpi: int | None) -> None:
 
 
 def test_fixed_axes_decorations_and_repeat_svg(tmp_path: Path) -> None:
+    """固定Axes寸法と装飾の包含を繰り返し保存しても保持することを確認する。"""
     with Plot(axes_size=(3, 2)) as plot:
         plot.line([0, 1], [1e7, 2e7], label="Signal")
         plot.line([0, 1], [1e-5, 2e-5], side="right", label="Pressure")

@@ -1,6 +1,7 @@
 """GraphBuilderの基本動作を検証するbehavior test。"""
 
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -20,13 +21,7 @@ from plotting_tools import (
     PlotStyleConfig,
     ScaleEnum,
     TextStyleConfig,
-    format_sci_mathtext,
 )
-
-
-def test_format_sci_mathtext_zero() -> None:
-    """ゼロが指数表記にならないことを確認する。"""
-    assert format_sci_mathtext(0) == "0"
 
 
 def test_set_xlim_expands_identical_limits() -> None:
@@ -39,46 +34,20 @@ def test_set_xlim_expands_identical_limits() -> None:
     assert xmin < 1.0 < xmax
 
 
-def test_graph_builder_creates_figure() -> None:
-    """単一系列からFigureとLine2Dが生成されることを確認する。"""
-    builder = GraphBuilder()
-    builder.add_plot(
-        pd.Series([0.0, 1.0, 2.0]),
-        PlotInfo(data=pd.Series([1.0, 2.0, 1.5]), label="sample"),
-    )
+@pytest.mark.parametrize("container", [list, np.array, pd.Series])
+def test_graph_builder_preserves_input_data(
+    container: Callable[[list[float]], list[float] | np.ndarray | pd.Series],
+) -> None:
+    """対応する入力形式からX/Y値を変えずに系列を生成することを確認する。"""
+    x = [0.0, 1.0, 2.0]
+    y = [1.0, 2.0, 1.5]
+    with GraphBuilder() as builder:
+        builder.add_plot(container(x), PlotInfo(data=container(y)))
+        figure = builder.finalize()
 
-    figure = builder.finalize()
-
-    assert isinstance(figure, Figure)
-    assert len(builder.ax1.lines) == 1
-
-
-def test_graph_builder_accepts_numpy_array() -> None:
-    """NumPy配列をX/Yデータとして描画できることを確認する。"""
-    x = np.array([0, 1, 2, 3])
-    y = np.array([1.0, 2.0, 1.5, 3.0])
-    builder = GraphBuilder()
-    builder.set_labels("x", "y")
-    builder.add_plot(x, PlotInfo(data=y))
-
-    figure = builder.finalize()
-
-    assert figure is not None
-    assert len(builder.lines) == 1
-
-
-def test_graph_builder_accepts_python_list() -> None:
-    """PythonのlistをX/Yデータとして描画できることを確認する。"""
-    x = [0, 1, 2, 3]
-    y = [1.0, 2.0, 1.5, 3.0]
-    builder = GraphBuilder()
-    builder.set_labels("x", "y")
-    builder.add_plot(x, PlotInfo(data=y))
-
-    figure = builder.finalize()
-
-    assert figure is not None
-    assert len(builder.lines) == 1
+        assert isinstance(figure, Figure)
+        np.testing.assert_array_equal(builder.lines[0].get_xdata(), x)
+        np.testing.assert_array_equal(builder.lines[0].get_ydata(), y)
 
 
 def test_plot_info_style_is_passed_to_matplotlib() -> None:
@@ -277,8 +246,17 @@ def test_locator_and_formatter_api() -> None:
 
 def test_legend_style_and_early_creation() -> None:
     """凡例をfinalize前に生成でき、設定が反映されることを確認する。"""
-    upper_left_location_code = 2
-    style = PlotStyleConfig(legend=LegendStyleConfig(loc="upper left", ncols=2, frameon=False))
+    legend_fontsize = 12
+    borderaxespad = 0.75
+    style = PlotStyleConfig(
+        legend=LegendStyleConfig(
+            loc="upper left",
+            ncols=2,
+            frameon=False,
+            fontsize=legend_fontsize,
+            options={"borderaxespad": borderaxespad},
+        )
+    )
     builder = GraphBuilder(style)
     builder.add_plot([0, 1], PlotInfo(data=[1.0, 2.0], label="sample"))
 
@@ -288,7 +266,12 @@ def test_legend_style_and_early_creation() -> None:
     builder.finalize()
 
     assert builder.ax1.get_legend() is legend
-    assert legend._loc == upper_left_location_code  # noqa: SLF001
+    builder.fig.canvas.draw()
+    bounds = legend.get_window_extent()
+    # borderaxespadは凡例フォントサイズの倍数で、描画bboxはpixel単位。
+    padding_pixels = borderaxespad * legend_fontsize * builder.fig.dpi / 72
+    assert bounds.x0 == pytest.approx(builder.ax1.bbox.x0 + padding_pixels)
+    assert bounds.y1 == pytest.approx(builder.ax1.bbox.y1 - padding_pixels)
     assert legend.get_frame_on() is False
     assert legend.get_title().get_text() == "custom"
 

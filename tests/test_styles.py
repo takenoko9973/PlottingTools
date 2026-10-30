@@ -20,6 +20,7 @@ from plotting_tools import (
 
 @pytest.fixture
 def template(tmp_path: Path) -> Path:
+    """優先順位と描画設定の検証に使う明示的なテンプレートを返す。"""
     path = tmp_path / "custom.mplstyle"
     path.write_text(
         "figure.figsize: 7, 4\nfigure.dpi: 80\nlines.linewidth: 4\n"
@@ -33,6 +34,7 @@ def template(tmp_path: Path) -> Path:
 
 
 def test_template_and_explicit_series_priority(template: Path) -> None:
+    """明示した系列設定がテンプレートより優先されることを確認する。"""
     with GraphBuilder(style=template) as builder:
         builder.add_plot([0, 1], PlotInfo(data=[1, 2], label="template"))
         builder.add_plot([0, 1], PlotInfo(data=[2, 3], linewidth=6, style=":"))
@@ -58,6 +60,7 @@ def test_template_and_explicit_series_priority(template: Path) -> None:
 
 
 def test_interleaved_graphs_late_axis_and_scoped_save(template: Path, tmp_path: Path) -> None:
+    """交互に操作したグラフのスタイル分離と保存後の設定復元を確認する。"""
     before = mpl.rcParams.copy()
     with GraphBuilder(style=template) as first, GraphBuilder(style="default") as second:
         second.add_plot([0, 1], PlotInfo(data=[1, 2]))
@@ -77,6 +80,7 @@ def test_interleaved_graphs_late_axis_and_scoped_save(template: Path, tmp_path: 
 
 
 def test_style_composition_and_missing_style(template: Path, tmp_path: Path) -> None:
+    """スタイルの重ね合わせ順と存在しないファイルの拒否を確認する。"""
     override = tmp_path / "override.mplstyle"
     override.write_text("lines.linewidth: 7\n", encoding="utf-8")
     with GraphBuilder(style=["paper", template, override]) as builder:
@@ -87,6 +91,7 @@ def test_style_composition_and_missing_style(template: Path, tmp_path: Path) -> 
 
 
 def test_event_labels_use_template_font_for_measurement_and_drawing(template: Path) -> None:
+    """イベントラベルの測定と描画が同じテンプレートフォントを使うことを確認する。"""
     with GraphBuilder(style=template) as builder:
         builder.add_plot([0, 1, 2], PlotInfo(data=[1, 2, 1], label="sample"))
         events = EventPlotConfig(points=[EventPoint(event="event", time=1, label="label")])

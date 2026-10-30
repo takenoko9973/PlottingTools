@@ -17,6 +17,7 @@ import plotting_tools as pt
 def test_line_accepts_existing_data_and_returns_editable_artist(
     container: Callable[[list[int]], object],
 ) -> None:
+    """入力値と明示設定を反映した編集可能な系列を返すことを確認する。"""
     x = container([0, 1, 2])
     y = container([1, 3, 2])
     with pt.Plot(style="paper") as plot:
@@ -47,6 +48,7 @@ def test_line_accepts_existing_data_and_returns_editable_artist(
 
 
 def test_line_supports_side_and_scale_strings_and_enums() -> None:
+    """文字列と列挙値で左右軸と軸種を指定できることを確認する。"""
     expected_right_series = 2
     with pt.Plot() as plot:
         plot.line([0, 1], [1, 2], side="right", scale="log")
@@ -59,6 +61,7 @@ def test_line_supports_side_and_scale_strings_and_enums() -> None:
 
 
 def test_line_validation_failure_releases_context_resources() -> None:
+    """入力検証の失敗時にもContext内の描画資源を解放することを確認する。"""
     with pytest.raises(ValueError, match="same length"), pt.Plot() as plot:  # noqa: PT012
         plot.line([0, 1], [1, 2])
         plot.line([0, 1], [1])
@@ -78,12 +81,14 @@ def test_line_validation_failure_releases_context_resources() -> None:
     ],
 )
 def test_line_accepts_native_linestyle_names(linestyle: str, expected: str) -> None:
+    """Matplotlibの線種名が系列へ反映されることを確認する。"""
     with pt.Plot() as plot:
         line = plot.line([0, 1], [1, 2], linestyle=linestyle)
         assert line.get_linestyle() == expected
 
 
 def test_line_omitted_linestyle_respects_template(tmp_path: Path) -> None:
+    """省略した線種がテンプレートに従い個別設定に影響されないことを確認する。"""
     template = tmp_path / "line.mplstyle"
     template.write_text("lines.linestyle: --\n", encoding="utf-8")
     with pt.Plot(style=template) as plot:
@@ -96,6 +101,7 @@ def test_line_omitted_linestyle_respects_template(tmp_path: Path) -> None:
 
 
 def test_line_omitted_marker_properties_respect_template(tmp_path: Path) -> None:
+    """省略したマーカー設定がテンプレートに従うことを確認する。"""
     template = tmp_path / "line-marker.mplstyle"
     template.write_text("lines.marker: ^\nlines.markersize: 9\n", encoding="utf-8")
     with pt.Plot(style=template) as plot:
@@ -108,6 +114,7 @@ def test_line_omitted_marker_properties_respect_template(tmp_path: Path) -> None
 
 
 def test_existing_plot_info_keeps_marker_format_strings() -> None:
+    """既存APIの書式文字列がマーカーと線種へ反映されることを確認する。"""
     with pt.GraphBuilder() as plot:
         plot.add_plot([0, 1], pt.PlotInfo(data=[1, 2], style="o--"))
         assert plot.lines[0].get_marker() == "o"
@@ -115,6 +122,7 @@ def test_existing_plot_info_keeps_marker_format_strings() -> None:
 
 
 def test_scatter_returns_editable_collection_with_data_and_right_scale() -> None:
+    """散布図が入力値と指定設定を保ち右対数軸へ追加されることを確認する。"""
     with pt.Plot() as plot:
         points = plot.scatter(
             [0, 1],
@@ -147,6 +155,7 @@ def test_scatter_returns_editable_collection_with_data_and_right_scale() -> None
 def test_scatter_defaults_follow_style_and_mixed_legend_keeps_addition_order(
     tmp_path: Path,
 ) -> None:
+    """散布図のスタイル適用と線系列を含めた凡例の追加順を確認する。"""
     template = tmp_path / "scatter.mplstyle"
     template.write_text(
         "scatter.marker: ^\n"
@@ -201,5 +210,6 @@ def test_scatter_defaults_follow_style_and_mixed_legend_keeps_addition_order(
 def test_scatter_rejects_data_outside_existing_plot_contract(
     x: object, y: object, message: str
 ) -> None:
+    """散布図も既存APIと同じ次元と長さの制約で入力を拒否することを確認する。"""
     with pt.Plot() as plot, pytest.raises(ValueError, match=message):
         plot.scatter(x, y)

@@ -188,10 +188,8 @@ class LabelLayoutEngine:
 
         for multiplier in self.X_SHIFT_MULTIPLIERS:
             candidate = item.target_x + (text_width * multiplier)
-            if item.x_bounds is not None:
-                xmin, xmax = item.x_bounds
-                if not xmin <= candidate <= xmax:
-                    continue
+            if item.x_bounds is not None and not item.x_bounds[0] <= candidate <= item.x_bounds[1]:
+                continue
             candidates.append(candidate)
 
         return candidates
@@ -278,9 +276,6 @@ class LabelLayoutEngine:
         # 区間内に点がない場合は、ラベル中心に最も近い1点で距離を評価する。
         center = (bounds.left + bounds.right) / 2.0
         nearest_index = int(np.abs(self.time_values - center).argmin())
-        if nearest_index >= data_values.size:
-            return np.array([])
-
         return np.array([data_values[nearest_index]])
 
     def _normalize_y_values(
@@ -303,9 +298,7 @@ class LabelLayoutEngine:
         log_ymin = math.log10(ymin) if ymin > 0 else self.LOG_FALLBACK_MIN
         log_ymax = math.log10(ymax) if ymax > 0 else self.LOG_FALLBACK_MAX
 
-        if log_ymax <= log_ymin:
-            return np.full_like(positive_values, 0.5, dtype=float)
-
+        # 反転軸では分母も負にし、表示方向に沿った相対座標へ変換する。
         return (np.log10(positive_values) - log_ymin) / (log_ymax - log_ymin)
 
     @staticmethod
@@ -318,21 +311,14 @@ class LabelLayoutEngine:
             return np.array([])
 
         ymin, ymax = ylim
-        if ymax <= ymin:
-            return np.full_like(values, 0.5, dtype=float)
-
+        # Matplotlibは同値の上下限を拡張するため、ここでは反転を含む表示範囲を使う。
         return (values - ymin) / (ymax - ymin)
 
     @staticmethod
     def _minimum_vertical_distance(bounds: Bounds, y_values: np.ndarray) -> float:
         """ラベル矩形と正規化済みデータ点の最短Y距離を返す。"""
-        inside_mask = (y_values >= bounds.bottom) & (y_values <= bounds.top)
-        above_mask = y_values > bounds.top
-
-        # 下側を既定にして上側、矩形内の順に上書きし、元の分岐優先順位を保つ。
-        distances = np.asarray(bounds.bottom - y_values, dtype=float)
-        distances[above_mask] = y_values[above_mask] - bounds.top
-        distances[inside_mask] = 0.0
+        distances = np.maximum(bounds.bottom - y_values, y_values - bounds.top)
+        distances = np.maximum(distances, 0.0)
         return float(np.min(distances))
 
     def _data_penalty(
@@ -345,7 +331,7 @@ class LabelLayoutEngine:
         weights: DataPenaltyWeights,
     ) -> float:
         """データ線とラベル矩形の最短距離からペナルティを計算する。"""
-        if data_values.size == 0 or self.time_values.size == 0:
+        if data_values.size == 0:
             return 0.0
 
         window_values = self._values_in_horizontal_window(bounds, data_values)
@@ -418,7 +404,7 @@ class LabelLayoutEngine:
             weights=self.SECONDARY_DATA_WEIGHTS,
         )
 
-        if math.isfinite(placement.x_shift) and abs(text_width) > self.MIN_TEXT_WIDTH:
+        if abs(text_width) > self.MIN_TEXT_WIDTH:
             relative_shift = abs(placement.x_shift) / abs(text_width)
             penalty += relative_shift * self.PENALTY_X_SHIFT
 
@@ -464,7 +450,7 @@ class LabelLayoutEngine:
 
         return best, False
 
-    def _find_best_placement(self, item: LabelItem) -> Placement | None:
+    def _find_best_placement(self, item: LabelItem) -> Placement:
         """Y移動を先に試し、未解決の場合のみX移動を含めて探索する。"""
         text_width, text_height = self._measure_text(item.label)
         y_candidates = [item.y_hint] if item.y_hint is not None else list(self.DEFAULT_Y_CANDIDATES)
@@ -492,7 +478,9 @@ class LabelLayoutEngine:
             check_event_lines=True,
             track_x_shift=True,
         )
-        return best.placement if best is not None else None
+        # 最初の探索はX/Y候補が必ず非空なので、少なくとも1つの配置が確定する。
+        assert best is not None
+        return best.placement
 
     def compute_layout(self, labels: list[LabelItem]) -> None:
         """優先度順に各ラベルの描画座標を決定する。"""
@@ -503,9 +491,6 @@ class LabelLayoutEngine:
 
         for item in ordered_labels:
             placement = self._find_best_placement(item)
-            if placement is None:
-                continue
-
             self.placed_bounds.append(placement.bounds)
             item.final_x = placement.x
             item.final_y = placement.y

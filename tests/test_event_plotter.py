@@ -1,5 +1,7 @@
 """イベント注釈のsmoke test。"""
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -124,3 +126,35 @@ def test_event_layout_rejects_different_lengths() -> None:
             secondary_y=[1e-4, 2e-4],
             secondary_ylim=(1e-5, 1e-3),
         )
+
+
+@pytest.mark.parametrize(
+    ("scale", "limits", "value"),
+    [(ScaleEnum.LINEAR, (1.0, 0.0), 0.06), (ScaleEnum.LOG, (100.0, 0.01), 10**-1.76)],
+)
+def test_event_labels_avoid_data_on_inverted_primary_axis(
+    tmp_path: Path, scale: ScaleEnum, limits: tuple[float, float], value: float
+) -> None:
+    """反転した主軸でもデータ線の実際の表示位置を避けて注釈を配置する。"""
+    template = tmp_path / "annotation.mplstyle"
+    template.write_text("font.family: DejaVu Sans\nfont.size: 12\n", encoding="utf-8")
+    style = PlotStyleConfig(figure=FigureStyleConfig(size=(900, 550), dpi=100))
+    with GraphBuilder(style, style=template) as builder:
+        builder.add_plot([0, 1, 2], PlotInfo(data=[value] * 3, scale=scale))
+        builder.ax1.set_ylim(*limits)
+        EventDrawer(
+            builder, EventPlotConfig(points=[EventPoint(event="process", time=1, label="measure")])
+        ).draw_events(
+            EventLayoutData(
+                x=[0, 1, 2],
+                primary_y=[value] * 3,
+                secondary_y=[float("nan")] * 3,
+                secondary_ylim=(0, 1),
+                primary_scale=scale,
+            )
+        )
+        builder.fig.canvas.draw()
+        label = builder.ax1.texts[0]
+        bounds = label.get_window_extent()
+        data_display_y = builder.ax1.transData.transform((1, value))[1]
+        assert not bounds.y0 <= data_display_y <= bounds.y1

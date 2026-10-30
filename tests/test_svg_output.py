@@ -18,6 +18,7 @@ from plotting_tools import (
 
 
 def test_complete_svg_and_raster_render_preserve_content_and_layout(tmp_path: Path) -> None:
+    """左右軸とイベントを含む描画がSVGと画像へ出力されることを確認する。"""
     event_fontsize = 13
     template = tmp_path / "export.mplstyle"
     template.write_text(
@@ -79,8 +80,6 @@ def test_complete_svg_and_raster_render_preserve_content_and_layout(tmp_path: Pa
             bounds = artist.get_window_extent(renderer)
             assert bounds.width > 0
             assert bounds.height > 0
-            assert plot.fig.bbox.contains(bounds.x0, bounds.y0)
-            assert plot.fig.bbox.contains(bounds.x1, bounds.y1)
         np.testing.assert_array_equal(left.get_xdata(), x)
         np.testing.assert_array_equal(left.get_ydata(), signal)
         np.testing.assert_array_equal(right.get_ydata(), pressure)

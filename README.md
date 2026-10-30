@@ -81,8 +81,14 @@ from plotting_tools import Plot
 samples = pd.DataFrame({"time": [0, 1, 2], "voltage": [1.0, 2.0, 1.5]})
 with Plot() as plot:
     plot.line(samples["time"], samples["voltage"], color="tab:blue", label="Sample A")
-    plot.line(np.array([0, 1, 2]), np.array([1.5, 2.5, 2.0]),
-              color="tab:red", label="Sample B", linestyle="dashed", linewidth=2.5)
+    plot.line(
+        np.array([0, 1, 2]),
+        np.array([1.5, 2.5, 2.0]),
+        color="tab:red",
+        label="Sample B",
+        linestyle="dashed",
+        linewidth=2.5,
+    )
     plot.set_labels("Time (s)", "Voltage (V)")
     plot.save("samples.svg")
 ```
@@ -98,8 +104,9 @@ from plotting_tools import Plot
 
 with Plot() as plot:
     plot.line([0, 1, 2], [1.0, 2.0, 1.5], label="Voltage", color="tab:blue")
-    plot.line([0, 1, 2], [1e-6, 1e-5, 1e-4], label="Pressure", color="tab:red",
-              side="right", scale="log")
+    plot.line(
+        [0, 1, 2], [1e-6, 1e-5, 1e-4], label="Pressure", color="tab:red", side="right", scale="log"
+    )
     plot.line([0, 1, 2], [2e-6, 2e-5, 2e-4], side="right", linestyle=":")
     plot.set_labels("Time (s)", "Voltage (V)", "Pressure (Pa)")
     plot.save("dual-axis.svg")
@@ -212,8 +219,14 @@ X 軸には `set_x_formatter()`、右 Y 軸には `AxisSide.RIGHT` を指定し�
 
 ```python
 from plotting_tools import (
-    AxisSide, EventDrawer, EventLayoutData, EventPlotConfig, EventPoint, EventSpan,
-    Plot, ScaleEnum,
+    AxisSide,
+    EventDrawer,
+    EventLayoutData,
+    EventPlotConfig,
+    EventPoint,
+    EventSpan,
+    Plot,
+    ScaleEnum,
 )
 
 x = [0, 1, 2, 3]
@@ -230,8 +243,11 @@ with Plot() as plot:
         points=[EventPoint(event="process", time=2, label="Measurement")],
     )
     layout = EventLayoutData(
-        x=x, primary_y=voltage, secondary_y=pressure,
-        secondary_scale=ScaleEnum.LOG, secondary_ylim=(1e-7, 1e-4),
+        x=x,
+        primary_y=voltage,
+        secondary_y=pressure,
+        secondary_scale=ScaleEnum.LOG,
+        secondary_ylim=(1e-7, 1e-4),
     )
     EventDrawer(plot, events).draw_events(layout)
     plot.save("events.svg")

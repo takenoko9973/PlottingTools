@@ -625,12 +625,7 @@ class GraphBuilder:
         """表示設定に従って既存凡例の削除または凡例生成を行う。"""
         current_legend = self.ax1.get_legend()
 
-        if not self.style.legend.visible:
-            if current_legend is not None:
-                current_legend.remove()
-            return
-
-        if current_legend is None:
+        if current_legend is None or not self.style.legend.visible:
             self.create_legend()
 
     def _position_fixed_axes(self, left: float, right: float, bottom: float, top: float) -> None:
