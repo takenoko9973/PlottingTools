@@ -12,46 +12,15 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=9.1.1", "ruff>=0.15.20", "ty>=0.0.56"]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+    "ty>=0.0.95",
+]
 
 [build-system]
 requires = ["uv_build>=0.11.26,<0.12.0"]
 build-backend = "uv_build"
-
-[tool.ruff]
-target-version = "py312"
-line-length = 100
-src = ["src", "tests"]
-
-[tool.ruff.lint]
-select = ["ALL"]
-ignore = [
-    "ANN002",
-    "ANN003",
-    "COM812",
-    "INP001",
-    "T20",
-    "D1",
-    "EXE",
-    "D400",
-    "D415",
-    "FBT001",
-    "FBT002",
-    "ERA001",
-    "S101",
-    "TRY300",
-]
-unfixable = ["F401", "F841", "ERA001"]
-
-[tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"]
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-
-[tool.ruff.pylint]
-max-args = 10
 
 [tool.ty.src]
 include = ["src"]

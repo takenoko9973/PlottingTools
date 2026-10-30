@@ -1,0 +1,50 @@
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[lint]
+select = ["ALL"]
+ignore = [
+    "ANN002", # missing-type-args
+    "ANN003", # missing-type-kwargs
+    "COM812", # 末尾のカンマを必須としない
+    "INP001", # __init__.pyを必須としない
+    "T20",    # flake8-print
+    "EXE",    # flake8-executable
+    "D100",
+    "D104",   # パッケージのdocstringを必須としない
+    "D107",   # __init__()のdocstringを必須としない
+    "D205",
+    "D212",
+    "D400",   # docstringの末尾ピリオドの強制を無効化
+    "D403",
+    "D415",   # docstringの末尾ピリオドの強制を無効化
+    "FBT001",
+    "FBT002", # 関数の引数にbooleanを許可
+    "ERA001",
+    #
+    "S101",
+    "TD002",
+    "TD003",
+    "FIX002",
+    "FBT003",
+    "TRY300",
+    "RUF003",
+    "CPY",    # コピーライト警告無効化
+]
+unfixable = [
+    "F401",   # unused-import : 使用していないモジュールの自動削除停止
+    "F841",   # unused-variable : 使用していない変数の自動削除停止
+    "ERA001", # commented-out-code : コメントアウトしたpythonコードのエラー
+]
+
+[lint.per-file-ignores]
+"**/__init__.py" = ["F401"]
+"tests/**" = ["PLR2004"]
+
+[lint.pylint]
+max-args = 10
+
+[format]
+quote-style = "double"
+indent-style = "space"
