@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import warnings
+from math import isfinite
+from numbers import Real
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, cast
 
@@ -14,6 +16,8 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from matplotlib.mathtext import MathTextParser
 from matplotlib.ticker import AutoMinorLocator
+from mpl_toolkits.axes_grid1.axes_divider import Divider
+from mpl_toolkits.axes_grid1.axes_size import Fixed
 
 from plotting_tools.config import PlotStyleConfig
 from plotting_tools.models import AxisSide, PlotInfo, PlotXData, PlotYData, ScaleEnum
@@ -50,8 +54,15 @@ class GraphBuilder:
         style_config: PlotStyleConfig | None = None,
         *,
         style: str | Path | list[str | Path] | None = None,
+        fig_size: tuple[float, float] | None = None,
+        axes_size: tuple[float, float] | None = None,
     ) -> None:
-        """Figureと左Y軸を生成し、共通の軸スタイルを適用する。"""
+        """Figureと左Y軸を生成する。fig_size/axes_sizeは排他的なインチ寸法。"""
+        if fig_size is not None and axes_size is not None:
+            msg = "fig_size and axes_size cannot be specified together"
+            raise ValueError(msg)
+        self._fig_size = self._validate_size("fig_size", fig_size)
+        self._axes_size = self._validate_size("axes_size", axes_size)
         self.style = style_config or PlotStyleConfig()
         paper = Path(__file__).with_name("styles") / "paper.mplstyle"
         if style is None:
@@ -82,6 +93,25 @@ class GraphBuilder:
         with self._style_context():
             self._setup_axis(self.ax1)
         self._apply_initial_limits()
+        if self._axes_size is not None:
+            self._position_fixed_axes(0, 0, 0, 0)
+
+    @staticmethod
+    def _validate_size(name: str, size: tuple[float, float] | None) -> tuple[float, float] | None:
+        """インチ寸法を正の有限実数2つとして検証する。"""
+        if size is None:
+            return None
+        msg = f"{name} must contain two positive finite numbers"
+        try:
+            width, height = size
+        except (TypeError, ValueError) as exc:
+            raise ValueError(msg) from exc
+        if any(
+            not isinstance(value, Real) or not isfinite(value) or value <= 0
+            for value in (width, height)
+        ):
+            raise ValueError(msg)
+        return float(width), float(height)
 
     def _style_context(self) -> AbstractContextManager[None]:
         """対象グラフのテンプレートと明示フォントを操作中だけ有効にする。"""
@@ -95,13 +125,15 @@ class GraphBuilder:
         return mpl.rc_context(rc=params)
 
     def _create_figure(self) -> Figure:
-        """ピクセル指定をインチへ変換し、headless描画可能なFigureを生成する。"""
+        """明示インチ寸法、従来pixel寸法、styleの順でFigure寸法を解決する。"""
         with self._style_context():
             options: dict[str, Any] = {}
             dpi = self.style.figure.dpi
             if dpi is not None:
                 options["dpi"] = dpi
-            if self.style.figure.size is not None:
+            if self._fig_size is not None or self._axes_size is not None:
+                options["figsize"] = self._fig_size or self._axes_size
+            elif self.style.figure.size is not None:
                 width_px, height_px = self.style.figure.size
                 effective_dpi = dpi if dpi is not None else mpl.rcParams["figure.dpi"]
                 options["figsize"] = (width_px / effective_dpi, height_px / effective_dpi)
@@ -556,6 +588,52 @@ class GraphBuilder:
         if current_legend is None:
             self.create_legend()
 
+    def _position_fixed_axes(self, left: float, right: float, bottom: float, top: float) -> None:
+        """装飾の余白とAxesをインチ単位で配置する。"""
+        assert self._axes_size is not None
+        width, height = self._axes_size
+        self.fig.set_size_inches(left + width + right, bottom + height + top)
+        divider = Divider(
+            self.fig,
+            (0, 0, 1, 1),
+            horizontal=[Fixed(left), Fixed(width), Fixed(right)],
+            vertical=[Fixed(bottom), Fixed(height), Fixed(top)],
+            aspect=False,
+        )
+        locator = divider.new_locator(nx=1, ny=1)
+        self.ax1.set_axes_locator(locator)
+        if self.ax2 is not None:
+            self.ax2.set_axes_locator(locator)
+
+    def _layout_fixed_axes(self) -> None:
+        """Axesの実寸を保ち、装飾が収まるFigure寸法を描画結果から決める。"""
+        # tight/constrained layoutによる再配置を避け、inch固定のlocatorに委ねる。
+        self.fig.set_layout_engine("none")
+        # tight_layout既定と同じfont sizeの1.08倍を外周の余白として確保する。
+        pad = 1.08 * self._rc_params["font.size"] / 72
+        # 毎回同じ寸法から測り直し、finalize/saveによる余白の累積を防ぐ。
+        self._position_fixed_axes(pad, pad, pad, pad)
+        self.fig.canvas.draw()
+        renderer = cast("_RendererCanvas", self.fig.canvas).get_renderer()
+        axes_bbox = self.ax1.bbox
+        left = right = bottom = top = 0.0
+        for axis in (self.ax1, self.ax2):
+            if axis is None:
+                continue
+            bounds = axis.get_tightbbox(renderer)
+            if bounds is None:
+                continue
+            left = max(left, axes_bbox.x0 - bounds.x0)
+            right = max(right, bounds.x1 - axes_bbox.x1)
+            bottom = max(bottom, axes_bbox.y0 - bounds.y0)
+            top = max(top, bounds.y1 - axes_bbox.y1)
+        # bboxは描画pixel、Fixedはinch。保存backendのDPI変更時も実寸を保つ。
+        dpi = self.fig.dpi
+        self._position_fixed_axes(
+            left / dpi + pad, right / dpi + pad, bottom / dpi + pad, top / dpi + pad
+        )
+        self.fig.canvas.draw()
+
     def finalize(self) -> Figure:
         """軸範囲、凡例、layoutを確定してFigureを返す。"""
         with self._style_context():
@@ -566,7 +644,10 @@ class GraphBuilder:
                 self._apply_tick_font(self.ax2)
 
             self._finalize_legend()
-            self.fig.tight_layout()
+            if self._axes_size is None:
+                self.fig.tight_layout()
+            else:
+                self._layout_fixed_axes()
             return self.fig
 
     def save(self, path: str | Path, **kwargs: Any) -> None:  # noqa: ANN401
