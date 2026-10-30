@@ -29,11 +29,13 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.axis import Axis
     from matplotlib.backend_bases import RendererBase
+    from matplotlib.collections import PathCollection
     from matplotlib.legend import Legend
     from matplotlib.lines import Line2D
     from matplotlib.text import Text
     from matplotlib.ticker import Formatter, Locator
-    from matplotlib.typing import LineStyleType
+    from matplotlib.typing import LineStyleType, MarkerType
+    from numpy.typing import ArrayLike
 
 # X軸範囲の幅が単一点とみなせるか判定する許容差 (データ座標)。
 EPSILON = 1e-9
@@ -83,6 +85,7 @@ class GraphBuilder:
         self.ax2: Axes | None = None
 
         self.lines: list[Line2D] = []
+        self._legend_handles: list[Line2D | PathCollection] = []
         self.labels: list[str] = []
         self._base_ylim: dict[AxisSide, tuple[float, float] | None] = {
             AxisSide.LEFT: None,
@@ -412,6 +415,8 @@ class GraphBuilder:
         color: str | None = None,
         linestyle: LineStyleType | None = None,
         linewidth: float | None = None,
+        marker: MarkerType | None = None,
+        markersize: float | None = None,
         side: AxisSide | Literal["left", "right"] = AxisSide.LEFT,
         scale: ScaleEnum | Literal["linear", "log"] | None = None,
     ) -> Line2D:
@@ -433,7 +438,44 @@ class GraphBuilder:
         if linestyle is not None:
             # PlotInfo.styleの位置引数fmtと異なり、属性名の線種は標準setterで扱う。
             line.set_linestyle(linestyle)
+        if marker is not None:
+            line.set_marker(marker)
+        if markersize is not None:
+            line.set_markersize(markersize)
         return line
+
+    def scatter(
+        self,
+        x: PlotXData,
+        y: PlotYData,
+        *,
+        color: str | None = None,
+        marker: MarkerType | None = None,
+        s: float | ArrayLike | None = None,
+        label: str = "",
+        side: AxisSide | Literal["left", "right"] = AxisSide.LEFT,
+        scale: ScaleEnum | Literal["linear", "log"] | None = None,
+    ) -> PathCollection:
+        """X/Yを指定したY軸へ散布図として追加し、編集可能なcollectionを返す。"""
+        axis_side = side if isinstance(side, AxisSide) else AxisSide(side)
+        axis_scale = ScaleEnum(scale) if scale is not None else None
+        with self._style_context():
+            self._validate_plot_data(x, y)
+            target_axis = self.get_axis(axis_side)
+            if axis_scale is not None:
+                self.set_yscale(axis_side, axis_scale)
+            safe_label = self._get_safe_text(label)
+            points = target_axis.scatter(
+                x,
+                y,
+                color=color,
+                marker=marker,
+                s=s,
+                label=safe_label,
+            )
+            self._legend_handles.append(points)
+            self.labels.append(safe_label)
+            return points
 
     @staticmethod
     def _validate_plot_data(x_data: PlotXData, y_data: PlotYData) -> None:
@@ -477,6 +519,7 @@ class GraphBuilder:
                 **options,
             )
             self.lines.append(line)
+            self._legend_handles.append(line)
             self.labels.append(safe_label)
 
     def add_safe_text(
@@ -552,12 +595,14 @@ class GraphBuilder:
                 return None
 
             legend_items = [
-                (line, label) for line, label in zip(self.lines, self.labels, strict=True) if label
+                (handle, label)
+                for handle, label in zip(self._legend_handles, self.labels, strict=True)
+                if label
             ]
             if not legend_items:
                 return None
 
-            legend_lines, legend_labels = zip(*legend_items, strict=True)
+            legend_handles, legend_labels = zip(*legend_items, strict=True)
             # 既存APIと同様、options内の重複キーを個別設定より優先してmatplotlibへ渡す。
             options: dict[str, Any] = {"ncols": self.style.legend.ncols}
             explicit_options = (
@@ -567,7 +612,7 @@ class GraphBuilder:
             )
             options.update({key: value for key, value in explicit_options if value is not None})
             options.update(self.style.legend.options)
-            legend = self.ax1.legend(legend_lines, legend_labels, **options)
+            legend = self.ax1.legend(legend_handles, legend_labels, **options)
 
             font_family = self.style.text.font_family
             if font_family is not None:
@@ -659,6 +704,7 @@ class GraphBuilder:
         """Figureが保持するArtistを破棄してbatch処理でのメモリ保持を防ぐ。"""
         with self._style_context():
             self.lines.clear()
+            self._legend_handles.clear()
             self.labels.clear()
 
             if self.ax2 is not None:

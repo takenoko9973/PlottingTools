@@ -4,13 +4,16 @@ import pandas as pd
 import pytest
 
 from plotting_tools import (
+    AxisSide,
     EventDrawer,
     EventLayoutData,
     EventPlotConfig,
     EventPoint,
     EventSpan,
+    FigureStyleConfig,
     GraphBuilder,
     PlotInfo,
+    PlotStyleConfig,
     ScaleEnum,
 )
 
@@ -21,8 +24,17 @@ def test_event_drawer_draws_annotations_without_raising() -> None:
     x_data = pd.Series([0.0, 1.0, 2.0, 3.0])
     main_data = pd.Series([1.0, 2.0, 1.5, 3.0])
     pressure_data = pd.Series([1e-4, 2e-4, 1.5e-4, 3e-4])
-    builder = GraphBuilder()
+    builder = GraphBuilder(PlotStyleConfig(figure=FigureStyleConfig(size=(640, 480))))
     builder.add_plot(x_data, PlotInfo(data=main_data, label="sample"))
+    builder.add_plot(
+        x_data,
+        PlotInfo(
+            data=pressure_data,
+            axis=AxisSide.RIGHT,
+            label="pressure",
+            scale=ScaleEnum.LOG,
+        ),
+    )
     config = EventPlotConfig(
         colors={"process": "tab:green"},
         spans=[
@@ -56,6 +68,45 @@ def test_event_drawer_draws_annotations_without_raising() -> None:
 
     assert len(builder.ax1.patches) == 1
     assert len(builder.ax1.texts) == expected_annotation_count
+    assert builder.fig.get_size_inches().tolist() == [6.4, 4.8]
+    assert builder.ax1.lines[0].get_ydata().tolist() == main_data.tolist()
+    assert builder.get_ax2().lines[0].get_ydata().tolist() == pressure_data.tolist()
+    assert builder.get_ax2().get_yscale() == "log"
+
+
+@pytest.mark.parametrize("with_labeled_line", [False, True])
+def test_event_drawer_handles_unlabeled_scatter_alone_and_with_a_line(
+    with_labeled_line: bool,
+) -> None:
+    """label未指定の散布図だけでも、混在時でもイベント注釈を配置できる。"""
+    x_data = [0.0, 1.0, 2.0, 3.0]
+    scatter_data = [1.0, 2.0, 1.5, 3.0]
+    builder = GraphBuilder()
+    builder.scatter(x_data, scatter_data)
+    if with_labeled_line:
+        builder.line(x_data, [2.0, 2.5, 2.0, 3.5], label="reference")
+    config = EventPlotConfig(points=[EventPoint(event="process", time=2.0, label="measure")])
+
+    EventDrawer(builder, config).draw_events(
+        EventLayoutData(
+            x=x_data,
+            primary_y=scatter_data,
+            secondary_y=[1e-4, 2e-4, 1.5e-4, 3e-4],
+            secondary_scale=ScaleEnum.LOG,
+            secondary_ylim=(1e-5, 1e-3),
+        )
+    )
+    figure = builder.finalize()
+    figure.canvas.draw()
+
+    assert len(builder.ax1.collections) == 1
+    assert len(builder.ax1.texts) == 1
+    legend = builder.ax1.get_legend()
+    if with_labeled_line:
+        assert legend is not None
+        assert [text.get_text() for text in legend.get_texts()] == ["reference"]
+    else:
+        assert legend is None
 
 
 def test_event_span_rejects_reversed_range() -> None:

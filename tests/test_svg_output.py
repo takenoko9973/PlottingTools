@@ -32,6 +32,16 @@ def test_complete_svg_and_raster_render_preserve_content_and_layout(tmp_path: Pa
         right = plot.line(
             x, pressure, side="right", scale="log", color="tab:red", label="Pressure sample"
         )
+        points = plot.scatter(
+            x,
+            pressure,
+            side="right",
+            scale="log",
+            color="tab:orange",
+            marker="o",
+            s=12,
+            label="Pressure points",
+        )
         plot.set_title(r"Experiment $\alpha$")
         plot.set_labels("Time (s)", "Signal (V)", "Pressure (Pa)")
         plot.set_xlim(0, 10)
@@ -74,6 +84,7 @@ def test_complete_svg_and_raster_render_preserve_content_and_layout(tmp_path: Pa
         np.testing.assert_array_equal(left.get_xdata(), x)
         np.testing.assert_array_equal(left.get_ydata(), signal)
         np.testing.assert_array_equal(right.get_ydata(), pressure)
+        np.testing.assert_array_equal(points.get_offsets(), np.column_stack((x, pressure)))
         assert plot.get_ax2().get_yscale() == "log"
         assert len(plot.ax1.patches) == 1
         assert plot.ax1.texts[0].get_fontsize() == event_fontsize
@@ -86,6 +97,7 @@ def test_complete_svg_and_raster_render_preserve_content_and_layout(tmp_path: Pa
             "Pressure (Pa)",
             "Signal sample",
             "Pressure sample",
+            "Pressure points",
             "Heating",
         ):
             assert expected in texts
