@@ -3,7 +3,7 @@
 PlottingTools は、研究用グラフを少ないコードで作成する Matplotlib ラッパーです。
 X/Y データと必要な属性だけを指定し、共通の外観を `.mplstyle` で管理します。
 左右 Y 軸、対数軸、Mathtext、イベント注釈、SVG 保存、headless 描画に対応します。
-公開 API の引数、入力条件、互換性を含む詳細は[公開仕様書](docs/SPECIFICATION.md)を参照してください。
+公開 API の引数と入力条件の詳細は[公開仕様書](docs/SPECIFICATION.md)を参照してください。
 
 ## Windows の共通 Python 環境
 
@@ -36,11 +36,15 @@ from plotting_tools import Plot
 with Plot(style="paper") as plot:
     plot.line(x=[0, 1, 2], y=[1.0, 2.5, 1.5], color="blue", label="Sample A")
     plot.set_labels("Time (s)", "Voltage (V)")
+    plot.x.style(label_size=10, tick_label_size=9)
+    plot.title.style(font_size=12)
+    plot.legend.style(font_size=10, frame=False)
     plot.save("result.svg")
 ```
 
 `Plot` は `GraphBuilder` の別名です。両者は同じ描画処理を使います。
-`set_labels()` は既存 API を維持しており、系列の凡例ラベル一覧 `plot.labels` と区別します。
+軸・タイトル・凡例の外観は各グループの `style()` で調整します。変更したい項目から設定先を探すには
+[設定ガイド](docs/CUSTOMIZATION.md)を参照してください。`set_labels()` は軸ラベルの文字列を設定します。
 `line()` は編集可能な Matplotlib の `Line2D` を返します。
 
 `save(path, **kwargs)` は layout と保存時にもスタイルを適用します。拡張子に応じて PNG、PDF
@@ -159,15 +163,15 @@ with Plot(style=["paper", "lab.mplstyle"]) as plot:
 
 ```python
 from matplotlib.ticker import MultipleLocator
-from plotting_tools import AxisSide, LegendStyleConfig, Plot, PlotStyleConfig
+from plotting_tools import AxisSide, Plot
 
-config = PlotStyleConfig(legend=LegendStyleConfig(loc="upper left", frameon=False))
-with Plot(config) as plot:
+with Plot() as plot:
     plot.line([0, 1, 2], [1, 2, 1.5], label="Sample")
     plot.set_xlim(0, 3)
     plot.set_ylim(AxisSide.LEFT, 0, 4)
-    plot.set_x_locator(MultipleLocator(1))
-    plot.set_y_locator(AxisSide.LEFT, MultipleLocator(1))
+    plot.x.style(major_locator=MultipleLocator(1), label_size=10)
+    plot.y.style(major_locator=MultipleLocator(1), label_size=14)
+    plot.legend.style(loc="upper left", frame=False)
     plot.set_title(r"Signal $\alpha$")
     plot.set_labels("Time (s)", "Voltage (V)")
     legend = plot.create_legend()
@@ -178,7 +182,7 @@ with Plot(config) as plot:
 ```
 
 `set_ylim()` は固定範囲を設定します。自動範囲を最低限指定範囲まで広げる場合は
-`expand_ylim_to_include(side, ymin, ymax)` を使います。`LegendStyleConfig(visible=False)` で凡例を
+`expand_ylim_to_include(side, ymin, ymax)` を使います。`plot.legend.style(visible=False)` で凡例を
 非表示にできます。`get_axis(AxisSide.RIGHT)` で右軸、`fig` で Figure にアクセスできます。
 `finalize()` は凡例と layout を確定して Figure を返し、明示的に調整済みの凡例を保持します。
 layout や保存のエラーはそのまま送出します。
@@ -194,26 +198,26 @@ layout や保存のエラーはそのまま送出します。
 ```python
 from functools import partial
 from matplotlib.ticker import FuncFormatter
-from plotting_tools import AxisSide, Plot, format_sci_mathtext
+from plotting_tools import Plot, format_sci_mathtext
 
 with Plot() as plot:
     plot.line([0, 1, 2], [1e-8, 2e-8, 3e-8])
     formatter = FuncFormatter(partial(format_sci_mathtext, precision=3))
-    plot.set_y_formatter(AxisSide.LEFT, formatter)
+    plot.y.style(major_formatter=formatter)
     plot.set_labels("Time (s)", "Current (A)")
     plot.save("scientific.svg")
 ```
 
-X 軸には `set_x_formatter()`、右 Y 軸には `AxisSide.RIGHT` を指定します。major / minor は
-`which="major"` / `"minor"` で選択でき、Locator も別々に設定できます。明示した Locator / Formatter は
-後の系列追加、`finalize()`、builder によるスケール変更でも保持します。指定した設定が変更後の
-スケールに適していることは利用側で確認してください。
+X 軸には `plot.x.style()`、左 Y 軸には `plot.y.style()`、右 Y 軸には `plot.right_y.style()` を使います。
+主目盛・補助目盛は `major_formatter` / `minor_formatter`、`major_locator` / `minor_locator` で
+個別に指定します。明示した Locator / Formatter は後の系列追加、`finalize()`、スケール変更でも
+保持します。指定した設定が変更後のスケールに適していることは利用側で確認してください。
 
 `format_sci_mathtext(x, pos=None, *, precision=1)` の `precision` は係数の小数桁数です。
 丸めで指数が繰り上がる場合も正規化し、最小 subnormal から最大有限値まで扱います。
 ゼロは `0`、非有限値は NaN・符号付き無限大として表示します。`pos` は `FuncFormatter` 用です。
 不正な Mathtext ラベルは警告とともに `[Label Error]` に置換します。
-`PlotStyleConfig(strict_mathtext=True)` では `ValueError` になります。
+`Plot(strict_mathtext=True)` では `ValueError` になります。
 
 ## イベント期間・時点の注釈
 
@@ -257,10 +261,10 @@ with Plot() as plot:
 系列・スケール・右軸範囲を `EventLayoutData` に渡してください。イベントラベルの計測と描画は
 同じテンプレートのフォントを使います。
 
-## 既存 API と移行点
+## GraphBuilder と PlotInfo
 
-`GraphBuilder`、`PlotInfo`、各 `*StyleConfig` は引き続き package root から import できます。
-`style_config` は第1位置引数、テンプレート選択は keyword-only の `style=` です。
+`Plot` と同じクラスを `GraphBuilder` の名前で使えます。系列情報をまとめて渡す場合は
+`add_plot()` と `PlotInfo` を利用します。
 
 ```python
 from plotting_tools import GraphBuilder, PlotInfo
@@ -268,14 +272,8 @@ from plotting_tools import GraphBuilder, PlotInfo
 with GraphBuilder() as builder:
     builder.add_plot([0, 1, 2], PlotInfo(data=[1, 3, 2], label="Sample", style="--"))
     builder.set_labels("Time (s)", "Voltage (V)")
-    builder.save("existing-api.svg")
+    builder.save("series.svg")
 ```
-
-- rcParams 対応の外観設定と `PlotInfo.style` の既定値は `None`（指定なし）になりました。
-  明示した値はテンプレートより優先されます。`FigureStyleConfig.size` の明示指定は従来どおりピクセル単位です。
-- `PlotInfo.scale` の既定値は `None`（現在の軸スケールを保持）になりました。
-- 軸範囲、左右の割り当て、凡例の表示有無・列数、イベント情報は個別の設定・操作として維持しています。
-- 旧 `plotting_tools.plot_util` ではなく package root から import してください。
 
 ## 開発
 

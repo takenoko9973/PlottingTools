@@ -10,7 +10,7 @@ PlottingTools は、数値系列や時間系列を Matplotlib の Figure と Axe
 
 ## 2. 公開 API と基本利用
 
-`Plot` は `GraphBuilder` の同一クラス別名です。どちらの名前で生成しても同じ API と動作になります。スタイル設定は第1位置引数、その他のコンストラクター引数はキーワード専用です。
+`Plot` は `GraphBuilder` の同一クラス別名です。どちらの名前で生成しても同じ API と動作になります。コンストラクターは `Plot(*, style=None, fig_size=None, axes_size=None, strict_mathtext=False)` で、すべての引数がキーワード専用です。
 
 ```python
 from plotting_tools import Plot
@@ -21,7 +21,7 @@ with Plot(style="paper") as plot:
     plot.save("result.svg")
 ```
 
-package root は `AxisSide`、`AxisStyleConfig`、`EventDrawer`、`EventLayoutData`、`EventPlotConfig`、`EventPoint`、`EventSpan`、`FigureStyleConfig`、`GraphBuilder`、`LegendStyleConfig`、`LineStyleConfig`、`Plot`、`PlotInfo`、`PlotStyleConfig`、`ScaleEnum`、`TextStyleConfig`、`format_sci_mathtext` を公開します。
+package root は `AxisSide`、`EventDrawer`、`EventLayoutData`、`EventPlotConfig`、`EventPoint`、`EventSpan`、`GraphBuilder`、`Plot`、`PlotInfo`、`ScaleEnum`、`format_sci_mathtext` を公開します。
 
 ## 3. データ型と入力条件
 
@@ -40,7 +40,7 @@ PlottingTools は、全値の有限性、空系列、Y の対数軸に対する�
 
 `side` は `AxisSide.LEFT` / `AxisSide.RIGHT` または `"left"` / `"right"`、`scale` は `ScaleEnum.LINEAR` / `ScaleEnum.LOG` または `"linear"` / `"log"` を受け取ります。`scale=None` は指定軸の現在のスケールを保持します。
 
-`color`、`linestyle`、`linewidth`、`marker`、`markersize` を省略した場合は Matplotlib の色サイクルと style の値が使われます。明示した値は style より優先されます。`linewidth` は `PlotInfo.linewidth`、次に `LineStyleConfig.width`、最後に Matplotlib style の `lines.linewidth` の順に決まります。`PlotInfo.linewidth` と `LineStyleConfig.width` は正値が必要です。`marker` と `markersize` の省略値はそれぞれ style の `lines.marker` と `lines.markersize` に従います。線幅とマーカーサイズの単位はポイントです。
+`color`、`linestyle`、`linewidth`、`marker`、`markersize` を省略した場合は Matplotlib の色サイクルと style の値が使われます。明示した値は style より優先されます。`linewidth` は明示した `PlotInfo.linewidth`、次に Matplotlib style の `lines.linewidth` の順に決まります。`PlotInfo.linewidth` は正値が必要です。`marker` と `markersize` の省略値はそれぞれ style の `lines.marker` と `lines.markersize` に従います。線幅とマーカーサイズの単位はポイントです。
 
 ## 5. Scatter 系列
 
@@ -58,17 +58,17 @@ Line と Scatter は凡例候補に追加順で記録されます。空の `labe
 |---|---|---|
 | `fig_size` | Figure 全体 | 指定された幅・高さを保つ |
 | `axes_size` | 描画領域（Axes） | Axes の実寸を保ち、目盛・ラベル・タイトル・指数表示・通常の外側凡例などの余白を含めて Figure を拡大する |
-| どちらも省略 | なし | 従来の Figure 設定を使う |
+| どちらも省略 | なし | style の `figure.figsize` を使う |
 
-既定の `paper` style は Figure を 9 × 5.5 inch、100 dpi にします。`FigureStyleConfig.size` は従来どおり pixel 単位で、`FigureStyleConfig.dpi` または style の有効 DPI で inch に換算します。寸法の優先順位は、明示された inch 寸法（`fig_size` は Figure 全体、`axes_size` は Axes）、`FigureStyleConfig.size` と有効 DPI、style の `figure.figsize` です。`FigureStyleConfig.dpi` は Figure の DPI を指定し、保存時の解像度は Matplotlib の `savefig` 引数と設定に従います。
+既定の `paper` style は Figure を 8 × 5.5 inch、100 dpi にします。明示された `fig_size` または `axes_size` が style の `figure.figsize` より優先されます。Figure の DPI は style の `figure.dpi` で指定し、保存時の解像度は Matplotlib の `savefig` 引数と設定に従います。
 
-`axes_size` は左右の Y 軸に同じ Axes 寸法を保ちます。通常の SVG 保存では clip 領域も指定した Axes の実寸になります。目盛、軸ラベル、タイトル、Axes に属する通常の外側凡例などに必要な余白は Figure 側に確保します。Figure-level artist（例: `fig.suptitle()`）や任意の Figure 位置・layout 変更による外側領域はこの寸法保証の対象ではなく、見切れないことを保証しません。装飾が変われば Figure の外寸は変わり得ますが、繰り返しの `finalize()` / `save()` で余白が累積することはありません。`axes_size` 使用時に利用者が `fig.tight_layout()` を直接呼ぶと Matplotlib の警告が出ますが、固定 Axes 寸法は保たれます。`fig_size` および従来の Figure 寸法では、従来どおり `tight_layout` が適用されます。
+`axes_size` は左右の Y 軸に同じ Axes 寸法を保ちます。通常の SVG 保存では clip 領域も指定した Axes の実寸になります。目盛、軸ラベル、タイトル、Axes に属する通常の外側凡例などに必要な余白は Figure 側に確保します。Figure-level artist（例: `fig.suptitle()`）や任意の Figure 位置・layout 変更による外側領域はこの寸法保証の対象ではなく、見切れないことを保証しません。装飾が変われば Figure の外寸は変わり得ますが、繰り返しの `finalize()` / `save()` で余白が累積することはありません。`axes_size` 使用時に利用者が `fig.tight_layout()` を直接呼ぶと Matplotlib の警告が出ますが、固定 Axes 寸法は保たれます。`axes_size` を省略した場合は `tight_layout` が適用されます。
 
 通常の `save()` は指定 Figure 寸法を出力します。`save(..., bbox_inches="tight")` など出力領域を変更する Matplotlib 引数を指定すると、出力キャンバスが crop され、Figure の外寸保証とは異なる結果になります。
 
 ## 7. 軸範囲とスケール
 
-X 軸と左右の Y 軸はそれぞれ独立して扱います。初期範囲は `AxisStyleConfig.xlim`、`left_ylim`、`right_ylim` で指定できます。
+X 軸と左右の Y 軸はそれぞれ独立して扱います。範囲とスケールは操作メソッドで設定します。
 
 - `set_xlim(xmin, xmax)` は X 軸範囲を設定します。両端の差の絶対値が `1e-9` 未満なら、各端を 0.5 ずつ広げます。
 - `set_ylim(side, ymin, ymax)` は指定した Y 軸の範囲を固定します。`ymin >= ymax` は `ValueError` です。
@@ -77,30 +77,33 @@ X 軸と左右の Y 軸はそれぞれ独立して扱います。初期範囲は
 
 対数軸に不適切な値や範囲を渡した場合の描画結果・警告は Matplotlib に従います。Locator / Formatter を明示した場合、指定したスケールに適合する設定を選ぶ責任は利用者にあります。
 
-## 8. Locator と Formatter
+## 8. グループ別の表示設定
 
-X 軸には `set_x_locator(locator, *, which="major")` / `set_x_formatter(formatter, *, which="major")`、Y 軸には `set_y_locator(side, locator, *, which="major")` / `set_y_formatter(side, formatter, *, which="major")` を使います。`which` は `"major"` または `"minor"` です。引数には Matplotlib の `Locator` / `Formatter` を指定します。
+`plot.x` は X 軸、`plot.y` は左 Y 軸、`plot.right_y` は右 Y 軸を表します。グループへのアクセスだけでは右 Axes を生成せず、右軸の設定や描画に必要になった時点で `twinx()` により生成します。
 
-明示した Locator と Formatter は、後続の系列追加、`finalize()`、builder によるスケール変更後も保持されます。style の minor tick 表示、分割数、formatter の Mathtext 設定は尊重します。目盛位置や科学表記への切り替え閾値は固定しません。
+各軸の `style()` は次のキーワード専用引数を受け取ります。すべての既定値は `None`（変更しない）です。
+
+| 引数 | 値と適用先 |
+|---|---|
+| `label_size` / `label_color` | 軸ラベルの文字サイズ（pt）/ Matplotlib の色 |
+| `tick_label_size` | 主目盛・補助目盛のラベル文字サイズ（pt） |
+| `tick_direction` | 主目盛・補助目盛の方向（`"in"` / `"out"` / `"inout"`） |
+| `tick_length` / `tick_width` | 主目盛線の長さ / 幅（pt） |
+| `major_locator` / `minor_locator` | 主目盛 / 補助目盛の Matplotlib `Locator` |
+| `major_formatter` / `minor_formatter` | 主目盛 / 補助目盛の Matplotlib `Formatter` |
+| `grid` | 対象軸の主目盛グリッドの表示有無（bool） |
+
+明示した Locator と Formatter は、後続の系列追加、`finalize()`、builder によるスケール変更後も保持します。style の minor tick 表示、分割数、formatter の Mathtext 設定は尊重します。目盛位置や科学表記への切り替え閾値は固定しません。
+
+`plot.title.style(*, font_size=None, color=None)` はタイトルの文字サイズ（pt）と色だけを変更します。`set_title()` は文字列を変更し、style の `axes.titlelocation` に従うタイトルを使います。`set_labels()` も文字列だけを変更します。これらの文字列設定の前後どちらで `style()` を呼んでも、指定した外観は維持します。同じ属性を再度明示すると後の指定が優先されます。
+
+軸範囲・スケール・ラベル文字列は `style()` の対象に含めません。特殊な grid 属性やフォントなど頻出引数以外は `get_axis()` などから Matplotlib の標準 API を使います。設定先の逆引きは[設定ガイド](CUSTOMIZATION.md)を参照してください。
 
 ## 9. Style と設定の優先順位
 
-style の適用順は Matplotlib 標準値、同梱 `paper`、`style=` に指定した style（リストなら指定順）、指定された `PlotStyleConfig` の値です。`style` は Matplotlib style 名、style ファイルの path、またはそれらのリストを受け取ります。未指定時も `paper` を適用します。`None` を既定値とする設定を省略した場合は、対応する style または Matplotlib の値を使います。
+style の適用順は Matplotlib 標準値、同梱 `paper`、`style=` に指定した style（リストなら指定順）、明示的なグループの `style()` または描画引数です。`style` は Matplotlib style 名、style ファイルの path、またはそれらのリストを受け取ります。未指定時も `paper` を適用します。
 
-`PlotStyleConfig` は `figure: FigureStyleConfig`、`text: TextStyleConfig`、`axes: AxisStyleConfig`、`legend: LegendStyleConfig`、`line: LineStyleConfig`、`strict_mathtext: bool` を持ちます。各設定クラスは次の項目を設定します。
-
-| 設定クラス | 公開フィールド、既定値、動作 |
-|---|---|
-| `FigureStyleConfig` | `size=None`（pixel 単位の幅・高さ）、`dpi=None`。指定値は正である必要がある |
-| `TextStyleConfig` | `title_fontsize=None`、`label_fontsize=None`、`tick_fontsize=None`（point 単位）、`font_family=None`、`title_options={}`、`label_options={}`。指定する文字サイズは正である必要がある |
-| `AxisStyleConfig` | `xlim=None`、`left_ylim=None`、`right_ylim=None`、`tick_direction=None`、`grid=None`、`grid_which=None`、`grid_axis=None`、`grid_options={}`。指定する範囲は昇順 |
-| `LegendStyleConfig` | `visible=True`、`loc=None`、`ncols=1`、`frameon=None`、`fontsize=None`、`options={}`。`ncols` と指定する `fontsize` は正である必要がある |
-| `LineStyleConfig` | `width=None`。指定する幅は正の point 値 |
-| `PlotStyleConfig` | 上記5設定を各設定クラスの既定インスタンスで初期化し、`strict_mathtext=False` を持つ |
-
-フィールドの既定値が `None` の設定は対応する style または Matplotlib の値を使います。`None` 以外を既定値に持つ設定は、その既定値を使います。`PlotStyleConfig` の明示値は対応する style 値より優先されます。
-
-`TextStyleConfig.title_options` と `label_options` は Matplotlib の文字設定、`AxisStyleConfig.grid_options` は grid 設定、`LegendStyleConfig.options` は凡例設定として渡されます。`tick_direction` は `"in"` / `"out"` / `"inout"`、`grid_which` は `"major"` / `"minor"` / `"both"`、`grid_axis` は `"x"` / `"y"` / `"both"` です。その他の Matplotlib option の意味と受理条件は Matplotlib に従います。
+グループの `style()` は指定属性だけを既存の Matplotlib オブジェクトへ適用し、未指定の属性を初期化しません。共通の DPI、色、フォント、目盛などは `.mplstyle` で設定します。凡例については Artist 生成前の呼び出しと再生成に備え、明示した値だけを保持します。
 
 選択された style の値はグラフごとに保持され、別の PlottingTools グラフや無関係な Matplotlib 操作へ設定が漏れないように適用されます。直接取得した Figure / Axes の操作は Matplotlib の規則に従います。
 
@@ -110,17 +113,19 @@ style の適用順は Matplotlib 標準値、同梱 `paper`、`style=` に指定
 
 `format_sci_mathtext(x, pos=None, *, precision=1)` は有限値を係数と指数の Mathtext（例: `"$1.25 \\times 10^{3}$"`）に変換し、`FuncFormatter` などへ明示的に渡して使う関数です。`precision` は係数の小数桁数で、負値は `ValueError` です。`pos` は `FuncFormatter` との接続用で、値の変換には使いません。正負のゼロは `"0"`、NaN は `"$\\mathrm{NaN}$"`、正負の無限大は `"$\\infty$"` または `"$-\\infty$"` を返します。丸めによって指数が繰り上がる値も正規化します。この関数は全軸目盛へ自動適用されません。
 
-PlottingTools が受け取る系列 label、軸 label、title、および `add_safe_text()` の文字列は Mathtext を検証します。不正な文字列は通常 `UserWarning` を出して `[Label Error]` に置き換え、`PlotStyleConfig(strict_mathtext=True)` では `ValueError` にします。不正文字列を `add_safe_text()` が置き換える場合は赤で表示します。取得した Axes へ直接追加した任意の Text は一括検証しません。
+PlottingTools が受け取る系列 label、軸 label、title、および `add_safe_text()` の文字列は Mathtext を検証します。不正な文字列は通常 `UserWarning` を出して `[Label Error]` に置き換え、`Plot(strict_mathtext=True)` では `ValueError` にします。不正文字列を `add_safe_text()` が置き換える場合は赤で表示します。取得した Axes へ直接追加した任意の Text は一括検証しません。
 
 `add_safe_text(x, y, text, ax_side=AxisSide.LEFT, **kwargs)` は編集可能な `Text` を返します。`get_safe_text_dimensions(text, fontsize, ax_side=AxisSide.LEFT)` は文字列の幅を data 座標、文字列の高さを Axes 相対座標で返します。
 
 ## 11. 凡例
 
-`create_legend()` は現在の系列から凡例を作り、編集可能な `Legend` を返します。表示対象ラベルがない場合、または `LegendStyleConfig.visible=False` の場合は `None` です。非表示設定では既存凡例を削除します。空ラベルの系列は凡例に含めません。
+`plot.legend.style(*, visible=None, loc=None, font_size=None, frame=None, ncols=None)` は凡例の表示有無、位置、文字サイズ（pt）、枠の表示有無、列数を変更します。省略または `None` の属性は変更しません。`loc` は Matplotlib の位置名・コード・座標を受け取り、`ncols` は正の整数が必要です。生成前でも呼び出すことができ、生成時に明示値を適用します。既定は表示あり、1列で、その他の外観は style に従います。
 
-凡例の項目は Line / Scatter の追加順です。`LegendStyleConfig` は `visible`、`loc`、`ncols`、`frameon`、`fontsize`、`options` を持ちます。`options` と個別の `loc` / `frameon` / `fontsize` / `ncols` が同じキーを指定した場合、`options` の値が優先されます。
+生成済みの場合は既存の `Legend` を更新します。`visible=False` は既存 Artist を非表示にし、`visible=True` は再表示します。表示状態はイベント注釈の凡例衝突回避にも反映します。列数や文字サイズの変更も既存 Legend に適用され、未指定の文字色・タイトル・枠の属性などは維持します。
 
-`finalize()` は凡例がまだなければ生成します。事前に `create_legend()` で生成して利用者が編集した凡例は保持します。凡例生成後に系列を追加したとき、その既存凡例が自動更新される保証はありません。
+`create_legend()` は現在の系列から凡例を生成し、編集可能な `Legend` を返します。表示対象ラベルがない場合、または凡例が非表示設定の場合は `None` です。Line / Scatter の項目は追加順で、空ラベルは含めません。再度呼ぶと現在の系列と明示設定で凡例を作り直します。Matplotlib で直接加えた編集を保持するには既存 Legend を操作してください。
+
+`finalize()` は凡例がまだなければ生成します。事前に生成して利用者が編集した既存凡例は保持します。凡例生成後に系列を追加しても、既存凡例を自動更新しません。項目を更新するには `create_legend()` を再度呼びます。イベント注釈の配置測定用に一時生成した凡例は除去され、その後の確定時には最新の系列から生成します。
 
 ## 12. イベント注釈
 
@@ -132,44 +137,32 @@ PlottingTools が受け取る系列 label、軸 label、title、および `add_s
 
 ## 13. Figure の確定と保存
 
-`finalize()` は Y 軸包含範囲、目盛フォント、凡例、layout を適用し、Matplotlib `Figure` を返します。Figure を直接扱う場合は `plot.finalize().savefig(path)` を使えます。保存時にも選択した style を適用するには `save(path, **kwargs)` を使います。`save()` は `finalize()` の後に Matplotlib の `savefig()` を呼び出し、保存結果を返しません。
+`finalize()` は Y 軸包含範囲、凡例、layout を適用し、Matplotlib `Figure` を返します。Figure を直接扱う場合は `plot.finalize().savefig(path)` を使えます。保存時にも選択した style を適用するには `save(path, **kwargs)` を使います。`save()` は `finalize()` の後に Matplotlib の `savefig()` を呼び出し、保存結果を返しません。
 
 PNG、SVG、PDF など Matplotlib backend が扱う形式に保存できます。拡張子に対応する backend 機能、フォント、保存引数の制約は Matplotlib に従います。たとえば SVG で `svg.fonttype: none` を使っても、Mathtext の一部が path になり得るため、すべての文字が編集可能なテキストになることは保証しません。layout または保存の例外はそのまま送出します。
 
 `close()` は Figure 内の artist を破棄します。context manager は `with` の正常終了・例外終了のどちらでも同じ cleanup を実行し、処理中の例外を抑制しません。`close()` 後に同じ builder を再利用する動作は保証しません。
 
-## 14. 後方互換性と既存 API
+## 14. 公開 API の一覧
 
-以下は現在の公開 API として依存できる振る舞いです。すべての将来バージョンに対する無条件の互換性や、ここに記載していない内部実装の互換性を約束するものではありません。
-
-| 公開要素 | 現在の契約 |
+| 公開要素 | 契約 |
 |---|---|
-| `GraphBuilder` / `Plot` | 同一クラス。`style_config` は第1位置引数、`style` はキーワード引数。`fig_size` と `axes_size` は追加されたキーワード専用引数 |
-| `PlotInfo` | 必須の `data` と `axis=AxisSide.LEFT`、`label=""`、`color=None`、`style=None`、`linewidth=None`、`scale=None` を持つ。`style` は Matplotlib の line format string（例 `"o--"`）、`linewidth` は正値、`scale=None` は現在の軸スケールを保持 |
-| `AxisSide` / `ScaleEnum` | `LEFT="left"`, `RIGHT="right"` および `LINEAR="linear"`, `LOG="log"` |
-| `PlotStyleConfig`、`FigureStyleConfig`、`TextStyleConfig`、`AxisStyleConfig`、`LegendStyleConfig`、`LineStyleConfig` | package root から import でき、公開フィールドと既定値を前節のとおり設定する |
-| `EventDrawer` とイベントモデル | `EventLayoutData`, `EventPlotConfig`, frozen な `EventPoint` / `EventSpan` を受け取り、イベントを描画する |
-| `add_plot(x_data, plot_info)` | 既存系列 API。戻り値は `None`。`lines` は `Line2D` のみを保持 |
-| `line(...)` | 既存の簡潔な系列 API。marker と markersize の指定を受け取り、`Line2D` を返す |
-| `scatter(...)` | 新設 API。`PathCollection` を返す。Line と Scatter のラベル・凡例項目は追加順 |
-| `set_labels(xlabel, ylabel_left, ylabel_right="")` | X と左 Y のラベルを設定し、右ラベルが空でなければ右 Y 軸を作成して設定 |
-| `set_xlim(...)` / `set_ylim(...)` | X 範囲、または `AxisSide` と厳密な昇順範囲で Y 範囲を設定 |
-| Locator / Formatter 指定 | X または `AxisSide` の Y 軸について major / minor ごとに Matplotlib オブジェクトを設定 |
-| `create_legend()` | 編集可能な `Legend`、または生成対象がないとき `None` を返す |
-| `finalize()` / `save(...)` | `Figure` を返す / Matplotlib 保存を実行し戻り値なし |
-| `get_axis(side=AxisSide.LEFT)` / `get_ax2()` | 指定側または右 Axes を返す。右 Axes は未生成なら作成する |
-| context manager / `close()` | Figure 内の artist を終了時に破棄する。例外は抑制しない |
+| `GraphBuilder` / `Plot` | 同一クラス。constructor は `style`、`fig_size`、`axes_size`、`strict_mathtext` のキーワード専用引数 |
+| `PlotInfo` | 必須の `data` と `axis=AxisSide.LEFT`、`label=""`、`color=None`、`style=None`、`linewidth=None`、`scale=None`。`style` は line format string、`linewidth` は正値、`scale=None` は現在の軸スケールを保持 |
+| `AxisSide` / `ScaleEnum` | `LEFT="left"`, `RIGHT="right"` / `LINEAR="linear"`, `LOG="log"` |
+| `x.style()` / `y.style()` / `right_y.style()` | 対象軸の外観と主目盛・補助目盛の Locator / Formatter |
+| `title.style()` / `legend.style()` | タイトルの外観 / 凡例の表示・配置・外観 |
+| `line()` / `scatter()` / `add_plot()` | `Line2D` / `PathCollection` / `None` を返す。`lines` は `Line2D` のみ |
+| `set_labels()` / `set_title()` | 軸ラベル / タイトルの文字列を設定 |
+| `set_xlim()` / `set_ylim()` / `expand_ylim_to_include()` / `set_yscale()` | 軸範囲・包含範囲・Y軸スケールの操作 |
+| `create_legend()` | 編集可能な `Legend`、または生成対象がないとき `None` |
+| `finalize()` / `save()` | `Figure` を返す / Matplotlib 保存を実行し戻り値なし |
+| `get_axis(side=AxisSide.LEFT)` / `get_ax2()` | 指定側 / 右の Axes を返し、右が未生成なら作成 |
+| `add_safe_text()` / `get_safe_text_dimensions()` / `format_sci_mathtext()` | 検証済み注釈・文字寸法計測・科学表記 |
+| `EventDrawer` とイベントモデル | `EventLayoutData`、`EventPlotConfig`、`EventPoint`、`EventSpan` に基づく注釈 |
+| context manager / `close()` | Figure の Artist を終了時に破棄し、例外は抑制しない |
 
-寸法の単位は次のとおりです。
-
-| 公開設定 | 単位と互換性 |
-|---|---|
-| `FigureStyleConfig.size` | 既存設定。pixel 単位で維持 |
-| `.mplstyle` の `figure.figsize` | 既存設定。inch 単位で維持 |
-| `fig_size` | 追加引数。Figure 全体の inch 寸法 |
-| `axes_size` | 追加引数。描画領域の inch 寸法。余白に応じて Figure 外寸は拡大 |
-
-`FigureStyleConfig.size` は pixel 単位、`fig_size` と `axes_size` は inch 単位です。これらの単位や constructor keyword の別名は追加しません。軸ラベル設定 API と凡例用系列 label は別の値です。内部実装が変わっても、この表に示した公開動作は保ちます。ただし仕様変更が必要な場合は、変更内容と影響を明示します。
+設定データクラス、`style_config` 引数、`set_x_locator()` / `set_y_locator()` / `set_x_formatter()` / `set_y_formatter()` は公開しません。互換エイリアスや旧引数の受理機構は提供しません。
 
 ## 15. 仕様変更の扱い
 
