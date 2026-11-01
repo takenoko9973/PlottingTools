@@ -7,10 +7,6 @@ import matplotlib as mpl
 import pytest
 
 from plotting_tools import (
-    EventDrawer,
-    EventLayoutData,
-    EventPlotConfig,
-    EventPoint,
     GraphBuilder,
     PlotInfo,
 )
@@ -92,11 +88,8 @@ def test_event_labels_use_template_font_for_measurement_and_drawing(template: Pa
     """イベントラベルの測定と描画が同じテンプレートフォントを使うことを確認する。"""
     with GraphBuilder(style=template) as builder:
         builder.add_plot([0, 1, 2], PlotInfo(data=[1, 2, 1], label="sample"))
-        events = EventPlotConfig(points=[EventPoint(event="event", time=1, label="label")])
-        layout = EventLayoutData(
-            x=[0, 1, 2], primary_y=[1, 2, 1], secondary_y=[1, 2, 1], secondary_ylim=(0, 3)
-        )
-        EventDrawer(builder, events).draw_events(layout)
+        builder.events.add_point(1, label="label")
+        builder.finalize()
         label = builder.ax1.texts[0]
         assert label.get_fontsize() == pytest.approx(21)
         assert label.get_fontfamily() == ["DejaVu Serif"]

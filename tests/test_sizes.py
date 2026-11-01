@@ -7,10 +7,6 @@ import numpy as np
 import pytest
 
 from plotting_tools import (
-    EventDrawer,
-    EventLayoutData,
-    EventPlotConfig,
-    EventPoint,
     Plot,
 )
 
@@ -61,16 +57,7 @@ def test_fixed_axes_decorations_and_repeat_svg(tmp_path: Path) -> None:
     with Plot(axes_size=(3, 2)) as plot:
         plot.line([0, 1], [1e7, 2e7], label="Signal")
         plot.line([0, 1], [1e-5, 2e-5], side="right", label="Pressure")
-        EventDrawer(
-            plot, EventPlotConfig(points=[EventPoint(event="process", time=0.5, label="Measure")])
-        ).draw_events(
-            EventLayoutData(
-                x=[0, 1],
-                primary_y=[1e7, 2e7],
-                secondary_y=[1e-5, 2e-5],
-                secondary_ylim=(0, 3e-5),
-            )
-        )
+        plot.events.add_point(0.5, label="Measure")
         plot.set_labels("Time (s)", "Signal (V)", "Pressure (Pa)")
         plot.set_title("Experiment title")
         legend = plot.create_legend()

@@ -21,7 +21,7 @@ with Plot(style="paper") as plot:
     plot.save("result.svg")
 ```
 
-package root は `AxisSide`、`EventDrawer`、`EventLayoutData`、`EventPlotConfig`、`EventPoint`、`EventSpan`、`GraphBuilder`、`Plot`、`PlotInfo`、`ScaleEnum`、`format_sci_mathtext` を公開します。
+package root は `AxisSide`、`EventPoint`、`EventSpan`、`GraphBuilder`、`Plot`、`PlotInfo`、`ScaleEnum`、`format_sci_mathtext` を公開します。
 
 ## 3. データ型と入力条件
 
@@ -125,19 +125,25 @@ PlottingTools が受け取る系列 label、軸 label、title、および `add_s
 
 `create_legend()` は現在の系列から凡例を生成し、編集可能な `Legend` を返します。表示対象ラベルがない場合、または凡例が非表示設定の場合は `None` です。Line / Scatter の項目は追加順で、空ラベルは含めません。再度呼ぶと現在の系列と明示設定で凡例を作り直します。Matplotlib で直接加えた編集を保持するには既存 Legend を操作してください。
 
-`finalize()` は凡例がまだなければ生成します。事前に生成して利用者が編集した既存凡例は保持します。凡例生成後に系列を追加しても、既存凡例を自動更新しません。項目を更新するには `create_legend()` を再度呼びます。イベント注釈の配置測定用に一時生成した凡例は除去され、その後の確定時には最新の系列から生成します。
+`finalize()` は凡例がまだなければ生成します。事前に生成して利用者が編集した既存凡例は保持します。凡例生成後に系列を追加しても、既存凡例を自動更新しません。項目を更新するには `create_legend()` を再度呼びます。イベント注釈は確定時に存在する凡例を避けます。
 
 ## 12. イベント注釈
 
-`EventSpan` は `event`, `start`, `end`, `label=None`, `dx=0.0`, `y=None` を持つ期間モデルです。`start >= end` は `ValueError` です。`EventPoint` は同じ共通フィールドに `time` を持つ時点モデルです。両者は frozen dataclass です。`EventPlotConfig` はイベント色辞書 `colors`、期間一覧 `spans`、時点一覧 `points` を持ちます。
+`plot.events.add_span(start, end, *, label=None, color=None, dx=0.0, y=None, time_shift_sec=0.0, divisor=1.0)` と `add_point(time, *, ...)` で個別登録します。`add_events(events, *, time_shift_sec=0.0, divisor=1.0)` は `Iterable[EventSpan | EventPoint]` を受け取り、混在、片方のみ、generatorに対応します。戻り値はすべて `None` です。未対応の要素は `TypeError` で拒否します。一括登録中に失敗した場合、それまでに登録したイベントは残ります。
 
-`EventLayoutData` には描画済みの X、左 Y、右 Y の系列、`secondary_ylim`、`primary_scale`、`secondary_scale` を渡します。`secondary_ylim` は必須で、scale の既定値は左右とも `ScaleEnum.LINEAR` です。3系列は1次元で長さが等しく、`secondary_ylim` は昇順である必要があります。これらの値と scale は利用者が描画済み系列・軸に合わせます。ラベル配置は渡された系列や凡例との衝突を減らす候補を選びますが、完全な非重複や最適配置は保証しません。
+`EventSpan(start, end, label=None, color=None, dx=0.0, y=None)` と `EventPoint(time, label=None, color=None, dx=0.0, y=None)` は frozen dataclass です。期間は `start < end` が必須で、違反は `ValueError` です。イベント名・色辞書・描画設定コンテナ・配置用データの指定は不要です。旧イベントAPIの互換ラッパーは提供しません。
 
-`EventDrawer(builder, config, time_shift_sec=0.0, divisor=1.0).draw_events(layout_data, extra_spans=None)` は期間を塗りつぶし、時点に縦線を加えます。イベント時刻は `(seconds - time_shift_sec) / divisor`、`dx` は `dx / divisor` に変換されます。`divisor=0` は `ValueError` です。変換後 X が 0 以下で終了する期間と、変換後 X が負の時点は描画しません。変換後 X が負の位置から続く期間は X=0 から描きます。イベントに label がなければ図形だけを描きます。イベント名に色が設定されていない場合の図形色は緑です。ラベルの `y` は Axes 相対位置です。label 中の文字列 `\n` は改行として描画されます。
+時刻は `(seconds - time_shift_sec) / divisor`、`dx` は `dx / divisor` に変換します。`divisor=0` は `ValueError` です。負の除数では変換後の期間両端を昇順に扱います。`y` はAxes相対位置です。label中の文字列 `\n` は計測・描画の両方で改行として扱います。不正Mathtextは登録時に検証し、通常は警告と赤い `[Label Error]`、`strict_mathtext=True` はArtist追加前の `ValueError` です。`label=None` は図形だけを描きます。
+
+図形は登録時に追加しますが、X軸の自動範囲には含めません。負のX座標も保持し、登録時の軸範囲による切り捨ては行いません。確定時に表示範囲外のラベルを抑制し、一部表示の期間は可視区間の中心にdxを加えます。図形はAxesでクリッピングします。
+
+全ラベルは確定時にまとめて配置します。期間優先、次に時点、同優先度では対象X昇順です。Y方向を先に探索し、必要な場合だけX移動を試します。各Line / Scatterの最新Artistデータを固有の座標変換でAxes相対座標へ写すため、系列ごとの点数・X座標・順序は一致不要です。左右軸、線形・対数・反転軸、疎な線分、空・非有限データ、重複Xに対応し、非正log値と欠損は線を分断します。イベント図形をデータ系列として評価しません。対象はPlottingToolsの系列APIで追加したArtistで、Matplotlibへ直接追加した系列は対象外です。凡例・既配置ラベル・他イベントの境界との衝突を減らしますが、完全な非重複や最適配置は保証しません。
+
+`plot.events.style(*, span_alpha=None, point_alpha=None, default_color=None)` は指定項目だけを変更します。既定値は期間alpha=0.1、時点alpha=0.8、色green、時点線種 `:` です。alphaは0〜1で検証します。既存・今後の図形と既存ラベルの色を更新しますが、個別色を共通色で上書きしません。ラベルの透明度は変更しません。`.mplstyle` のコメントdirectiveと優先順位は [CUSTOMIZATION.md](CUSTOMIZATION.md) を参照してください。
 
 ## 13. Figure の確定と保存
 
-`finalize()` は Y 軸包含範囲、凡例、layout を適用し、Matplotlib `Figure` を返します。Figure を直接扱う場合は `plot.finalize().savefig(path)` を使えます。保存時にも選択した style を適用するには `save(path, **kwargs)` を使います。`save()` は `finalize()` の後に Matplotlib の `savefig()` を呼び出し、保存結果を返しません。
+`finalize()` は前回のイベントTextを除去し、Y軸包含範囲、未生成の凡例、Figure layout、描画geometryの順に確定した後、全イベントラベルを配置し、Matplotlib `Figure` を返します。イベントTextはlayout測定へ含めず、固定Axes寸法を維持します。繰り返しても図形・ラベルや余白は累積しません。確定後の系列編集・イベント追加は次回の配置に反映します。Figure を直接扱う場合は `plot.finalize().savefig(path)` を使えます。保存時にも選択した style を適用するには `save(path, **kwargs)` を使います。`save()` は `finalize()` の後に Matplotlib の `savefig()` を呼び出し、保存結果を返しません。
 
 PNG、SVG、PDF など Matplotlib backend が扱う形式に保存できます。拡張子に対応する backend 機能、フォント、保存引数の制約は Matplotlib に従います。たとえば SVG で `svg.fonttype: none` を使っても、Mathtext の一部が path になり得るため、すべての文字が編集可能なテキストになることは保証しません。layout または保存の例外はそのまま送出します。
 
@@ -159,7 +165,8 @@ PNG、SVG、PDF など Matplotlib backend が扱う形式に保存できます�
 | `finalize()` / `save()` | `Figure` を返す / Matplotlib 保存を実行し戻り値なし |
 | `get_axis(side=AxisSide.LEFT)` / `get_ax2()` | 指定側 / 右の Axes を返し、右が未生成なら作成 |
 | `add_safe_text()` / `get_safe_text_dimensions()` / `format_sci_mathtext()` | 検証済み注釈・文字寸法計測・科学表記 |
-| `EventDrawer` とイベントモデル | `EventLayoutData`、`EventPlotConfig`、`EventPoint`、`EventSpan` に基づく注釈 |
+| `events.add_span()` / `events.add_point()` / `events.add_events()` | 個別・Iterableのイベント登録。軽量モデルは `EventSpan` / `EventPoint` |
+| `events.style()` | 共通透明度と既定色の更新 |
 | context manager / `close()` | Figure の Artist を終了時に破棄し、例外は抑制しない |
 
 設定データクラス、`style_config` 引数、`set_x_locator()` / `set_y_locator()` / `set_x_formatter()` / `set_y_formatter()` は公開しません。互換エイリアスや旧引数の受理機構は提供しません。

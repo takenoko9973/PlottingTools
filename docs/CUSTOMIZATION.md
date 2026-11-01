@@ -53,7 +53,7 @@ with Plot(style="paper", axes_size=(5, 3)) as plot:
 
 `style()` と `set_labels()` / `set_title()` の呼び出し順序で、明示した文字サイズや色が初期化されることはありません。同じ属性を再度指定すると後の変更が優先されます。
 
-凡例の設定は生成前でも指定できます。生成後の `legend.style()` は既存の凡例を更新し、`finalize()` もその凡例を保持します。系列を追加して凡例の項目を作り直すときは `create_legend()` を再度呼びます。その場合、凡例へ直接加えた編集は再設定してください。イベント注釈は描画した時点の凡例を避けるため、配置・サイズは注釈を描く前に決めてください。
+凡例の設定は生成前でも指定できます。生成後の `legend.style()` は既存の凡例を更新し、`finalize()` もその凡例を保持します。系列を追加して凡例の項目を作り直すときは `create_legend()` を再度呼びます。その場合、凡例へ直接加えた編集は再設定してください。イベント注釈は `finalize()` / `save()` 時点の凡例を避けます。
 
 ## 共通設定をファイルへ置く
 
@@ -71,3 +71,27 @@ legend.frameon: False
 ```
 
 `Plot(style="lab.mplstyle")` で使います。適用順は Matplotlib 標準値 → 同梱 `paper` → 利用者の style → 明示的な `style()`・描画引数です。利用者の style が省略した項目は `paper` の既定値を使います。複数ファイルは `style=["lab.mplstyle", "presentation.mplstyle"]` のように指定順に重ねられます。
+
+## イベントの色と透明度
+
+```python
+plot.events.style(span_alpha=0.5, point_alpha=1.0, default_color="green")
+plot.events.add_span(10, 20, label="Heating", color="red")
+plot.events.add_point(25, label="Measurement")
+```
+
+`style()` は指定した項目だけを変更し、生成済みのイベントにも反映します。個別の `color` は共通色より優先します。期間・時点の既定透明度はそれぞれ0.1・0.8、既定色はgreenです。透明度は0〜1、ラベルの透明度は変更しません。
+
+共通設定を `.mplstyle` に置く場合、次のコメントdirectiveを使います。
+
+```ini
+# plotting_tools.events.span_alpha: 0.5
+# plotting_tools.events.point_alpha: 1.0
+# plotting_tools.events.default_color: green
+```
+
+`# ` で始まる上記3項目だけをPlottingToolsがファイルから読み取ります。Matplotlib単体で使うと通常のコメントとして無視されます。通常のrcParamsキーとしては登録しないため、グローバル設定を汚染しません。コメントを外して独自キーを記述すると、Matplotlibは未知のキーとして破棄します。
+
+適用順はイベントの既定値 → 指定ファイルの順序による上書き → `events.style()` → 個別 `color` です。通常のMatplotlibスタイル名とファイルパスは混在でき、標準部分は従来のMatplotlib読み込みに委ねます。イベントdirectiveはローカルファイルパス指定時に読み取ります。Matplotlibの登録済みスタイル名やURLからの独自設定読込みは対象外です。Plot間で設定を共有しません。
+
+投影環境で背景領域が薄く見える場合は `span_alpha` を上げて調整できます。プロジェクターのHSL変換を仮定した自動補正は行いません。既存SVGはイベントの `opacity` / `stroke-opacity` を編集できますが、同じ値を使う別の図形まで置換しないよう対象を確認してください。既存SVGの一括変換機能は提供しません。

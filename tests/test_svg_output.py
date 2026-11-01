@@ -7,13 +7,9 @@ import numpy as np
 
 from plotting_tools import (
     AxisSide,
-    EventDrawer,
-    EventLayoutData,
-    EventPlotConfig,
     EventPoint,
     EventSpan,
     Plot,
-    ScaleEnum,
 )
 
 
@@ -48,18 +44,11 @@ def test_complete_svg_and_raster_render_preserve_content_and_layout(tmp_path: Pa
         plot.set_xlim(0, 10)
         plot.set_ylim(AxisSide.LEFT, 0, 4e-3)
         plot.set_ylim(AxisSide.RIGHT, 1e-8, 1e-3)
-        config = EventPlotConfig(
-            spans=[EventSpan(event="process", start=2, end=4, label="Heating")],
-            points=[EventPoint(event="process", time=7, label=r"Measure $t_0$")],
-        )
-        EventDrawer(plot, config).draw_events(
-            EventLayoutData(
-                x=x,
-                primary_y=signal,
-                secondary_y=pressure,
-                secondary_scale=ScaleEnum.LOG,
-                secondary_ylim=(1e-8, 1e-3),
-            )
+        plot.events.add_events(
+            [
+                EventSpan(2, 4, label="Heating"),
+                EventPoint(7, label=r"Measure $t_0$"),
+            ]
         )
         output = tmp_path / "representative.svg"
         plot.save(output)

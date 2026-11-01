@@ -2,24 +2,22 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
-
-from plotting_tools.models import ScaleEnum
+from matplotlib.lines import Line2D
+from matplotlib.path import Path
+from matplotlib.transforms import Bbox
 
 if TYPE_CHECKING:
-    from plotting_tools.event_models import EventLayoutData
     from plotting_tools.graph_builder import GraphBuilder
 
 
 class LabelPriority(IntEnum):
     """数値が大きいラベルほど先に配置する優先度を表す。"""
 
-    LOG_EVENT = 1
     POINT = 2
     SPAN = 3
 
@@ -28,7 +26,6 @@ class LabelPriority(IntEnum):
 class LabelItem:
     """配置前後のイベントラベル情報を保持する。"""
 
-    event: str
     label: str
     color: str
     priority: LabelPriority
@@ -44,7 +41,7 @@ class LabelItem:
 
 @dataclass(frozen=True)
 class Bounds:
-    """データX座標とAxes相対Y座標で表したラベル矩形。"""
+    """Axes相対X/Y座標で表したラベル矩形。"""
 
     left: float
     right: float
@@ -123,9 +120,9 @@ class LabelLayoutEngine:
     ACCEPTABLE_PENALTY = 100.0
     # 正規化Y距離がこの値未満なら、データ線に近い候補として扱う (単位なし)。
     NEAR_DATA_THRESHOLD = 0.05
-    # 文字幅が極端に小さいときのX移動量の相対評価を避ける下限 (データ座標)。
+    # 文字幅が極端に小さいときのX移動量の相対評価を避ける下限 (Axes相対X座標)。
     MIN_TEXT_WIDTH = 1e-12
-    # イベント線とラベル位置が同一とみなせるX座標差の許容値 (データ座標)。
+    # イベント線とラベル位置が同一とみなせるX座標差の許容値 (Axes相対X座標)。
     SAME_LINE_TOLERANCE = 1e-6
 
     # ラベル矩形が重なる場合の大きなペナルティ (単位なし)。
@@ -148,39 +145,58 @@ class LabelLayoutEngine:
         distance=5.0,
     )
 
-    # log軸範囲が非正の場合も正規化計算を継続できるよう1 decadeを仮定する。
-    # log10空間の下限・上限で、-15から-14が1 decadeを表す。
-    LOG_FALLBACK_MIN = -15.0
-    LOG_FALLBACK_MAX = -14.0
-
     def __init__(
         self,
         builder: GraphBuilder,
-        layout_data: EventLayoutData,
         vertical_lines: list[float],
         fontsize: float,
         initial_obstacles: list[Bounds] | None = None,
     ) -> None:
-        """描画済み系列と探索条件をNumPy配列として保持する。"""
+        """各Artistの最新データを自身の座標変換でAxes相対座標へ写す。"""
         self.builder = builder
         self.axis = builder.ax1
-        self.time_values = np.asarray(layout_data.x)
-        self.primary_values = np.asarray(layout_data.primary_y)
-        self.secondary_values = np.asarray(layout_data.secondary_y)
-
-        self.primary_is_log = layout_data.primary_scale is ScaleEnum.LOG
-        self.secondary_is_log = layout_data.secondary_scale is ScaleEnum.LOG
-        self.secondary_ylim = layout_data.secondary_ylim
-
         self.vertical_lines = vertical_lines
         self.fontsize = fontsize
-        self.xlim = self.axis.get_xlim()
-        self.primary_ylim = self.axis.get_ylim()
+        self.xlim = (0.0, 1.0)
         self.placed_bounds = list(initial_obstacles or [])
+        self.series: list[tuple[Path, bool, DataPenaltyWeights]] = []
+        for artist in builder._legend_handles:  # noqa: SLF001
+            axis = artist.axes
+            if axis is None or not artist.get_visible():
+                continue
+            if isinstance(artist, Line2D):
+                path = artist.get_path()
+                values = np.asarray(path.vertices).copy()
+                transform = artist.get_transform()
+                connected = artist.get_linestyle() not in {"None", "", " "}
+                if not connected and artist.get_marker() in {"None", "", " "}:
+                    continue
+            else:
+                values = np.ma.filled(artist.get_offsets(), np.nan).copy()
+                path = Path(values)
+                transform = artist.get_offset_transform()
+                connected = False
+            # logの非正値を巨大な負座標として線で結ばない。欠損は線分を分断する。
+            invalid = ~np.isfinite(values).all(axis=1)
+            if axis.get_xscale() == "log":
+                invalid |= values[:, 0] <= 0
+            if axis.get_yscale() == "log":
+                invalid |= values[:, 1] <= 0
+            values[invalid] = np.nan
+            transformed = (transform - self.axis.transAxes).transform_path(Path(values, path.codes))
+            weights = (
+                self.PRIMARY_DATA_WEIGHTS if axis is self.axis else self.SECONDARY_DATA_WEIGHTS
+            )
+            self.series.append((transformed, connected, weights))
 
     def _measure_text(self, text: str) -> tuple[float, float]:
-        """rendererを使ってmathtextを含む文字列の描画寸法を返す。"""
-        return self.builder.get_safe_text_dimensions(text, self.fontsize)
+        """実際の描画文字列を同じフォントで計測し、Axes相対寸法を返す。"""
+        artist = self.axis.text(0, 0, text, fontsize=self.fontsize)
+        try:
+            bounds = artist.get_window_extent().transformed(self.axis.transAxes.inverted())
+            return bounds.width, bounds.height
+        finally:
+            artist.remove()
 
     def _get_x_candidates(self, item: LabelItem, text_width: float) -> list[float]:
         """ラベルの制限範囲内に収まるX移動候補を返す。"""
@@ -258,98 +274,33 @@ class LabelLayoutEngine:
             x_shift=x_shift,
         )
 
-    def _values_in_horizontal_window(
-        self,
-        bounds: Bounds,
-        data_values: np.ndarray,
-    ) -> np.ndarray:
-        """ラベルと同じX区間にあるデータ点を返す。"""
-        start = int(np.searchsorted(self.time_values, bounds.left))
-        end = int(np.searchsorted(self.time_values, bounds.right, side="right"))
-
-        if start >= len(self.time_values):
-            start = len(self.time_values) - 1
-
-        if start != end:
-            return data_values[start:end]
-
-        # 区間内に点がない場合は、ラベル中心に最も近い1点で距離を評価する。
-        center = (bounds.left + bounds.right) / 2.0
-        nearest_index = int(np.abs(self.time_values - center).argmin())
-        return np.array([data_values[nearest_index]])
-
-    def _normalize_y_values(
-        self,
-        values: np.ndarray,
-        ylim: tuple[float, float],
-        *,
-        is_log: bool,
-    ) -> np.ndarray:
-        """データ値をAxes下端0、上端1の相対Y座標へ変換する。"""
-        finite_values = values[np.isfinite(values)]
-        if not is_log:
-            return self._normalize_linear_values(finite_values, ylim)
-
-        positive_values = finite_values[finite_values > 0]
-        if positive_values.size == 0:
-            return np.array([])
-
-        ymin, ymax = ylim
-        log_ymin = math.log10(ymin) if ymin > 0 else self.LOG_FALLBACK_MIN
-        log_ymax = math.log10(ymax) if ymax > 0 else self.LOG_FALLBACK_MAX
-
-        # 反転軸では分母も負にし、表示方向に沿った相対座標へ変換する。
-        return (np.log10(positive_values) - log_ymin) / (log_ymax - log_ymin)
-
-    @staticmethod
-    def _normalize_linear_values(
-        values: np.ndarray,
-        ylim: tuple[float, float],
-    ) -> np.ndarray:
-        """線形軸のデータ値をAxes相対Y座標へ変換する。"""
-        if values.size == 0:
-            return np.array([])
-
-        ymin, ymax = ylim
-        # Matplotlibは同値の上下限を拡張するため、ここでは反転を含む表示範囲を使う。
-        return (values - ymin) / (ymax - ymin)
-
-    @staticmethod
-    def _minimum_vertical_distance(bounds: Bounds, y_values: np.ndarray) -> float:
-        """ラベル矩形と正規化済みデータ点の最短Y距離を返す。"""
-        distances = np.maximum(bounds.bottom - y_values, y_values - bounds.top)
-        distances = np.maximum(distances, 0.0)
-        return float(np.min(distances))
-
-    def _data_penalty(
-        self,
-        bounds: Bounds,
-        data_values: np.ndarray,
-        ylim: tuple[float, float],
-        *,
-        is_log: bool,
-        weights: DataPenaltyWeights,
-    ) -> float:
-        """データ線とラベル矩形の最短距離からペナルティを計算する。"""
-        if data_values.size == 0:
-            return 0.0
-
-        window_values = self._values_in_horizontal_window(bounds, data_values)
-        if window_values.size == 0:
-            return 0.0
-
-        normalized_values = self._normalize_y_values(window_values, ylim, is_log=is_log)
-        if normalized_values.size == 0:
-            return 0.0
-
-        minimum_distance = self._minimum_vertical_distance(bounds, normalized_values)
-        if minimum_distance <= 0.0:
-            return weights.overlap
-
-        if minimum_distance < self.NEAR_DATA_THRESHOLD:
-            return weights.near
-
-        return (1.0 - minimum_distance) * weights.distance
+    def _data_penalty(self, bounds: Bounds) -> float:
+        """疎な線分も表示座標で判定し、系列ごとに独立した重みを加える。"""
+        box = Bbox.from_extents(bounds.left, bounds.bottom, bounds.right, bounds.top)
+        near_box = Bbox.from_extents(
+            bounds.left,
+            bounds.bottom - self.NEAR_DATA_THRESHOLD,
+            bounds.right,
+            bounds.top + self.NEAR_DATA_THRESHOLD,
+        )
+        penalty = 0.0
+        for path, connected, weights in self.series:
+            values = np.asarray(path.vertices)
+            finite = np.isfinite(values).all(axis=1)
+            in_window = finite & (values[:, 0] >= bounds.left) & (values[:, 0] <= bounds.right)
+            window_y = values[in_window, 1]
+            overlaps = np.any((window_y >= bounds.bottom) & (window_y <= bounds.top))
+            if overlaps or (connected and path.intersects_bbox(box, filled=False)):
+                penalty += weights.overlap
+                continue
+            near = np.any((window_y >= near_box.y0) & (window_y <= near_box.y1))
+            if near or (connected and path.intersects_bbox(near_box, filled=False)):
+                penalty += weights.near
+                continue
+            if window_y.size:
+                distances = np.maximum(bounds.bottom - window_y, window_y - bounds.top)
+                penalty += max(0.0, 1.0 - float(np.min(distances))) * weights.distance
+        return penalty
 
     def _label_overlap_penalty(self, bounds: Bounds) -> float:
         """配置済みラベルと重なる場合のペナルティを返す。"""
@@ -389,20 +340,7 @@ class LabelLayoutEngine:
         if check_event_lines:
             penalty += self._event_line_penalty(item, placement)
 
-        penalty += self._data_penalty(
-            placement.bounds,
-            self.primary_values,
-            self.primary_ylim,
-            is_log=self.primary_is_log,
-            weights=self.PRIMARY_DATA_WEIGHTS,
-        )
-        penalty += self._data_penalty(
-            placement.bounds,
-            self.secondary_values,
-            self.secondary_ylim,
-            is_log=self.secondary_is_log,
-            weights=self.SECONDARY_DATA_WEIGHTS,
-        )
+        penalty += self._data_penalty(placement.bounds)
 
         if abs(text_width) > self.MIN_TEXT_WIDTH:
             relative_shift = abs(placement.x_shift) / abs(text_width)
@@ -484,9 +422,10 @@ class LabelLayoutEngine:
 
     def compute_layout(self, labels: list[LabelItem]) -> None:
         """優先度順に各ラベルの描画座標を決定する。"""
+        to_data = self.axis.transAxes - self.axis.get_xaxis_transform()
         ordered_labels = sorted(
             labels,
-            key=lambda item: (-item.priority.value, item.target_x),
+            key=lambda item: (-item.priority.value, to_data.transform((item.target_x, 0))[0]),
         )
 
         for item in ordered_labels:

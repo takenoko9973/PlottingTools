@@ -113,8 +113,8 @@ class LegendStyleGroup:
             msg = "legend ncols must be positive"
             raise ValueError(msg)
         legend = self._builder.ax1.get_legend()
-        # イベントの衝突測定では凡例を一時生成して除去するため、再生成に
-        # 必要な明示値だけ保持する。Artistの全属性を複製する設定モデルは持たない。
+        # 生成前の指定とcreate_legendによる再生成に必要な明示値だけ保持する。
+        # Artistの全属性を複製する設定モデルは持たない。
         if visible is not None:
             self._visible = visible
         if loc is not None:

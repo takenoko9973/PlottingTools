@@ -222,44 +222,29 @@ X 軸には `plot.x.style()`、左 Y 軸には `plot.y.style()`、右 Y 軸に�
 ## イベント期間・時点の注釈
 
 ```python
-from plotting_tools import (
-    AxisSide,
-    EventDrawer,
-    EventLayoutData,
-    EventPlotConfig,
-    EventPoint,
-    EventSpan,
-    Plot,
-    ScaleEnum,
-)
+from plotting_tools import EventPoint, EventSpan, Plot
 
-x = [0, 1, 2, 3]
-voltage = [1.0, 2.0, 1.5, 3.0]
-pressure = [1e-6, 2e-6, 1e-5, 2e-5]
 with Plot() as plot:
-    plot.line(x, voltage, label="Voltage")
-    plot.line(x, pressure, side="right", scale="log", label="Pressure")
-    plot.set_labels("Time (s)", "Voltage (V)", "Pressure (Pa)")
-    plot.set_ylim(AxisSide.RIGHT, 1e-7, 1e-4)
-    events = EventPlotConfig(
-        colors={"process": "tab:green"},
-        spans=[EventSpan(event="process", start=0.5, end=1.5, label="Heating")],
-        points=[EventPoint(event="process", time=2, label="Measurement")],
-    )
-    layout = EventLayoutData(
-        x=x,
-        primary_y=voltage,
-        secondary_y=pressure,
-        secondary_scale=ScaleEnum.LOG,
-        secondary_ylim=(1e-7, 1e-4),
-    )
-    EventDrawer(plot, events).draw_events(layout)
+    plot.events.add_span(0.5, 1.5, label="Heating", color="red")
+    plot.line([0, 1, 2, 3], [1, 2, 1.5, 3], label="Voltage")
+    plot.line([0, 1.5, 3], [1e-6, 1e-5, 2e-5], side="right", scale="log")
+    plot.events.add_point(2, label="Measurement")
+    plot.events.add_events([
+        EventSpan(2.5, 3, label="Cooling", color="blue"),
+        EventPoint(1, label="Start"),
+    ])
+    plot.events.style(span_alpha=0.5, point_alpha=1.0, default_color="green")
     plot.save("events.svg")
 ```
 
-ラベル配置は系列、凡例、イベント境界との衝突を避ける候補を評価します。描画した軸と同じ
-系列・スケール・右軸範囲を `EventLayoutData` に渡してください。イベントラベルの計測と描画は
-同じテンプレートのフォントを使います。
+イベント図形は登録時に追加し、全ラベルは `finalize()` / `save()` でまとめて配置します。
+系列・イベントの追加順序は自由です。各Line / Scatterの最新データと軸、凡例、他のイベントを
+参照するため、配置用データの再入力は不要です。再確定は前回のラベルを置き換えます。
+イベントだけでX軸の自動範囲は拡張しません。表示範囲外のラベルは抑制し、一部だけ見える期間は
+可視区間の中心へ配置します。完全な非重複は保証しません。
+
+`.mplstyle` のイベント設定と優先順位は [設定ガイド](docs/CUSTOMIZATION.md) を参照してください。
+座標変換は3つの登録メソッドの `time_shift_sec` と `divisor` で指定します。
 
 ## GraphBuilder と PlotInfo
 

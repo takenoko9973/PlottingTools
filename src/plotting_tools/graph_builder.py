@@ -20,6 +20,7 @@ from mpl_toolkits.axes_grid1.axes_divider import Divider
 from mpl_toolkits.axes_grid1.axes_size import Fixed
 
 from plotting_tools._style_groups import AxisStyleGroup, LegendStyleGroup, TitleStyleGroup
+from plotting_tools.event_plotter import EventGroup
 from plotting_tools.models import AxisSide, PlotInfo, PlotXData, PlotYData, ScaleEnum
 
 if TYPE_CHECKING:
@@ -109,6 +110,7 @@ class GraphBuilder:
         self.right_y = AxisStyleGroup(self, "right_y")
         self.title = TitleStyleGroup(self._title_text)
         self.legend = LegendStyleGroup(self)
+        self.events = EventGroup(self, styles)
 
         if self._axes_size is not None:
             self._position_fixed_axes(0, 0, 0, 0)
@@ -526,6 +528,7 @@ class GraphBuilder:
     def finalize(self) -> Figure:
         """軸範囲、凡例、layoutを確定してFigureを返す。"""
         with self._style_context():
+            self.events._clear_labels()  # noqa: SLF001
             # 基準範囲を反映し、未生成の凡例だけを作る。
             self.adjust_axes_limits()
             if self.ax1.get_legend() is None:
@@ -537,6 +540,8 @@ class GraphBuilder:
             else:
                 self._layout_fixed_axes()
 
+            self.fig.canvas.draw()
+            self.events._place_labels()  # noqa: SLF001
             return self.fig
 
     def save(self, path: str | Path, **kwargs: Any) -> None:  # noqa: ANN401
@@ -548,6 +553,8 @@ class GraphBuilder:
         """Figureが保持するArtistを破棄してbatch処理でのメモリ保持を防ぐ。"""
         with self._style_context():
             # Python側で保持している系列・凡例参照を先に解放する。
+            self.events._clear_labels()  # noqa: SLF001
+            self.events._events.clear()  # noqa: SLF001
             self.lines.clear()
             self._legend_handles.clear()
             self.labels.clear()
