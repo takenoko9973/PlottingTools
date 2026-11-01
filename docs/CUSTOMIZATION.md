@@ -82,16 +82,18 @@ plot.events.add_point(25, label="Measurement")
 
 `style()` は指定した項目だけを変更し、生成済みのイベントにも反映します。個別の `color` は共通色より優先します。期間・時点の既定透明度はそれぞれ0.1・0.8、既定色はgreenです。透明度は0〜1、ラベルの透明度は変更しません。
 
-共通設定を `.mplstyle` に置く場合、次のコメントdirectiveを使います。
+共通設定を `.mplstyle` に置く場合、次の有効キーを `Plot(style="lab.mplstyle")` 経由で読み込みます。
 
 ```ini
-# plotting_tools.events.span_alpha: 0.5
-# plotting_tools.events.point_alpha: 1.0
-# plotting_tools.events.default_color: green
+plotting_tools.events.span_alpha: 0.5 # 期間の透明度
+plotting_tools.events.point_alpha: 1.0
+plotting_tools.events.default_color: "#008000" # hex色は引用する
 ```
 
-`# ` で始まる上記3項目だけをPlottingToolsがファイルから読み取ります。Matplotlib単体で使うと通常のコメントとして無視されます。通常のrcParamsキーとしては登録しないため、グローバル設定を汚染しません。コメントを外して独自キーを記述すると、Matplotlibは未知のキーとして破棄します。
+上記3項目はPlottingToolsが抽出し、標準部分をMatplotlibの公開parserで読み込みます。通常のコメント・引用・色・cycler構文は標準parserの扱いを維持します。イベント設定でも末尾の `#` コメントと引用値を使えます。行頭に `#` を付けた設定は通常のコメントとして無効になり、イベント設定を変更しません。独自項目の未知キー・不正値は `ValueError` になります。
 
-適用順はイベントの既定値 → 指定ファイルの順序による上書き → `events.style()` → 個別 `color` です。通常のMatplotlibスタイル名とファイルパスは混在でき、標準部分は従来のMatplotlib読み込みに委ねます。イベントdirectiveはローカルファイルパス指定時に読み取ります。Matplotlibの登録済みスタイル名やURLからの独自設定読込みは対象外です。Plot間で設定を共有しません。
+これらは標準rcParamsへ登録しないため、グローバル設定を汚染しません。Matplotlib単体へ直接このファイルを渡すと、イベントキーは未知キーの警告とともに破棄されます。イベント設定を有効にするには `Plot(style=...)` を使ってください。
+
+適用順はイベントの既定値 → 指定ファイルの順序による上書き → `events.style()` → 個別 `color` です。通常のMatplotlibスタイル名とファイルパスは混在でき、標準部分は従来のMatplotlib読み込みに委ねます。イベント設定はローカルファイルパス指定時に読み取ります。Matplotlibの登録済みスタイル名やURLからの独自設定読込みは対象外です。Plot間で設定を共有しません。
 
 投影環境で背景領域が薄く見える場合は `span_alpha` を上げて調整できます。プロジェクターのHSL変換を仮定した自動補正は行いません。既存SVGはイベントの `opacity` / `stroke-opacity` を編集できますが、同じ値を使う別の図形まで置換しないよう対象を確認してください。既存SVGの一括変換機能は提供しません。

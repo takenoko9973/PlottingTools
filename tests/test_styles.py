@@ -4,7 +4,9 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import matplotlib as mpl
+import matplotlib.style as mplstyle
 import pytest
+from matplotlib.colors import to_rgba
 
 from plotting_tools import (
     GraphBuilder,
@@ -99,3 +101,97 @@ def test_event_labels_use_template_font_for_measurement_and_drawing(template: Pa
         measured = bounds.transformed(builder.ax1.transAxes.inverted())
         assert height == pytest.approx(measured.height)
         assert width > 0
+
+
+def test_active_event_keys_and_standard_style_syntax(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """有効な独自キーだけを抽出し、標準の引用・コメント・cyclerを維持する。"""
+    template = tmp_path / "events.mplstyle"
+    template.write_text(
+        'axes.facecolor: "#fafafa" # standard comment\n'
+        "axes.prop_cycle: cycler('color', ['red', 'blue'])\n"
+        "plotting_tools.events.span_alpha: 0.4 # visible setting\n"
+        "plotting_tools.events.point_alpha: 0.9\n"
+        'plotting_tools.events.default_color: "#123abc" # quoted hex\n'
+        "# plotting_tools.events.span_alpha: 0.7\n"
+        "# plotting_tools.events.unknown: ignored comment\n",
+        encoding="utf-8",
+    )
+    before = dict(mpl.rcParams)
+    with GraphBuilder(style=["default", template]) as plot:
+        plot.events.add_span(0, 1)
+        plot.events.add_point(0.5)
+        assert plot.ax1.patches[0].get_alpha() == pytest.approx(0.4)
+        assert plot.ax1.lines[0].get_alpha() == pytest.approx(0.9)
+        assert plot.ax1.patches[0].get_facecolor() == to_rgba("#123abc", 0.4)
+        assert plot.ax1.get_facecolor() == to_rgba("#fafafa")
+        first = plot.line([0, 1], [0, 1])
+        second = plot.line([0, 1], [1, 2])
+        assert [first.get_color(), second.get_color()] == ["red", "blue"]
+    assert "Bad key" not in caplog.text
+    assert dict(mpl.rcParams) == before
+
+
+def test_commented_event_settings_are_disabled(tmp_path: Path) -> None:
+    """コメント化された独自設定は既定値を変更しない。"""
+    template = tmp_path / "disabled.mplstyle"
+    template.write_text(
+        "# plotting_tools.events.span_alpha: 0.6\n"
+        "# plotting_tools.events.point_alpha: 0.2\n"
+        "# plotting_tools.events.default_color: red\n",
+        encoding="utf-8",
+    )
+    with GraphBuilder(style=template) as plot:
+        plot.events.add_span(0, 1)
+        plot.events.add_point(0.5)
+        assert plot.ax1.patches[0].get_facecolor() == to_rgba("green", 0.1)
+        assert plot.ax1.lines[0].get_alpha() == pytest.approx(0.8)
+
+
+@pytest.mark.parametrize("name", ["default", "classic"])
+def test_style_names_take_priority_over_same_named_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+) -> None:
+    """スタイル名は同名ファイルより優先し、明示Pathだけをファイルとして読む。"""
+    monkeypatch.chdir(tmp_path)
+    Path(name).write_text(
+        "lines.linewidth: 12\nplotting_tools.events.span_alpha: 0.4\n", encoding="utf-8"
+    )
+    with mplstyle.context(name, after_reset=True):
+        expected_linewidth = mpl.rcParams["lines.linewidth"]
+    with GraphBuilder(style=name) as plot:
+        assert plot.line([0, 1], [0, 1]).get_linewidth() == pytest.approx(expected_linewidth)
+        plot.events.add_span(0, 1)
+        assert plot.ax1.patches[0].get_alpha() == pytest.approx(0.1)
+    for explicit_path in (Path(name), f"./{name}"):
+        with GraphBuilder(style=explicit_path) as plot:
+            assert plot.line([0, 1], [0, 1]).get_linewidth() == pytest.approx(12)
+            plot.events.add_span(0, 1)
+            assert plot.ax1.patches[0].get_alpha() == pytest.approx(0.4)
+
+
+@pytest.mark.parametrize(
+    ("setting", "message"),
+    [
+        ("span_alpa: 0.5", "unknown event style"),
+        ("span_alpha: 1.1", "between 0 and 1"),
+        ("point_alpha: nan", "between 0 and 1"),
+        ("point_alpha: wrong", "could not convert"),
+        ("default_color: invalid-color", "RGBA"),
+        ('default_color: "unterminated', "No closing quotation"),
+        ("span_alpha", "invalid event style"),
+        ("span_alpha:", "invalid event style"),
+    ],
+)
+def test_invalid_event_file_settings_raise(tmp_path: Path, setting: str, message: str) -> None:
+    """未知の独自キーと不正値を標準parserの警告へ紛れさせない。"""
+    template = tmp_path / "invalid.mplstyle"
+    template.write_text(f"plotting_tools.events.{setting}\n", encoding="utf-8")
+    before = dict(mpl.rcParams)
+    with pytest.raises(ValueError, match=message):
+        GraphBuilder(style=template)
+    assert dict(mpl.rcParams) == before

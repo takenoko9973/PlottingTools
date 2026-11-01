@@ -20,7 +20,7 @@ from mpl_toolkits.axes_grid1.axes_divider import Divider
 from mpl_toolkits.axes_grid1.axes_size import Fixed
 
 from plotting_tools._style_groups import AxisStyleGroup, LegendStyleGroup, TitleStyleGroup
-from plotting_tools.event_plotter import EventGroup
+from plotting_tools.event_plotter import EventGroup, _load_styles
 from plotting_tools.models import AxisSide, PlotInfo, PlotXData, PlotYData, ScaleEnum
 
 if TYPE_CHECKING:
@@ -77,9 +77,10 @@ class GraphBuilder:
         else:
             selected = [style]
         styles = [paper, *(paper if item == "paper" else item for item in selected)]
+        standard_styles, event_settings = _load_styles(styles)
 
         # 生成時の設定を保持し、後から別のグラフやglobal rcParamsが変わっても分離する。
-        with mplstyle.context(styles, after_reset=True):
+        with mplstyle.context(standard_styles, after_reset=True):
             self._rc_params = dict(mpl.rcParams)
         # backendはrc_contextで復元されないため、グラフの設定対象に含めない。
         self._rc_params.pop("backend", None)
@@ -110,7 +111,7 @@ class GraphBuilder:
         self.right_y = AxisStyleGroup(self, "right_y")
         self.title = TitleStyleGroup(self._title_text)
         self.legend = LegendStyleGroup(self)
-        self.events = EventGroup(self, styles)
+        self.events = EventGroup(self, event_settings)
 
         if self._axes_size is not None:
             self._position_fixed_axes(0, 0, 0, 0)

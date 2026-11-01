@@ -227,16 +227,16 @@ def test_mathtext_validation_before_drawing_and_multiline() -> None:
 
 
 def test_style_priority_updates_and_svg_alpha(tmp_path: Path) -> None:
-    """標準styleの重ね合わせとイベントdirective、明示色、SVG透明度を確認する。"""
+    """標準styleの重ね合わせとイベント設定、明示色、SVG透明度を確認する。"""
     first = tmp_path / "first.mplstyle"
     second = tmp_path / "second.mplstyle"
     first.write_text(
-        "lines.linewidth: 4\n# plotting_tools.events.span_alpha: 0.3\n"
-        "# plotting_tools.events.point_alpha: 0.6\n# plotting_tools.events.default_color: blue\n",
+        "lines.linewidth: 4\nplotting_tools.events.span_alpha: 0.3\n"
+        "plotting_tools.events.point_alpha: 0.6\nplotting_tools.events.default_color: blue\n",
         encoding="utf-8",
     )
     second.write_text(
-        "lines.linewidth: 5\n# plotting_tools.events.span_alpha: 0.5\n", encoding="utf-8"
+        "lines.linewidth: 5\nplotting_tools.events.span_alpha: 0.5\n", encoding="utf-8"
     )
     before = dict(mpl.rcParams)
     with Plot(style=["default", first, second]) as plot, Plot() as other:

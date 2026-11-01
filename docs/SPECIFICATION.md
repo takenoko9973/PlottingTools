@@ -139,7 +139,7 @@ PlottingTools が受け取る系列 label、軸 label、title、および `add_s
 
 全ラベルは確定時にまとめて配置します。期間優先、次に時点、同優先度では対象X昇順です。Y方向を先に探索し、必要な場合だけX移動を試します。各Line / Scatterの最新Artistデータを固有の座標変換でAxes相対座標へ写すため、系列ごとの点数・X座標・順序は一致不要です。左右軸、線形・対数・反転軸、疎な線分、空・非有限データ、重複Xに対応し、非正log値と欠損は線を分断します。イベント図形をデータ系列として評価しません。対象はPlottingToolsの系列APIで追加したArtistで、Matplotlibへ直接追加した系列は対象外です。凡例・既配置ラベル・他イベントの境界との衝突を減らしますが、完全な非重複や最適配置は保証しません。
 
-`plot.events.style(*, span_alpha=None, point_alpha=None, default_color=None)` は指定項目だけを変更します。既定値は期間alpha=0.1、時点alpha=0.8、色green、時点線種 `:` です。alphaは0〜1で検証します。既存・今後の図形と既存ラベルの色を更新しますが、個別色を共通色で上書きしません。ラベルの透明度は変更しません。`.mplstyle` のコメントdirectiveと優先順位は [CUSTOMIZATION.md](CUSTOMIZATION.md) を参照してください。
+`plot.events.style(*, span_alpha=None, point_alpha=None, default_color=None)` は指定項目だけを変更します。既定値は期間alpha=0.1、時点alpha=0.8、色green、時点線種 `:` です。alphaは0〜1で検証します。既存・今後の図形と既存ラベルの色を更新しますが、個別色を共通色で上書きしません。ラベルの透明度は変更しません。`.mplstyle` のイベント用キーと優先順位は [CUSTOMIZATION.md](CUSTOMIZATION.md) を参照してください。
 
 ## 13. Figure の確定と保存
 

@@ -5,9 +5,12 @@ from __future__ import annotations
 from dataclasses import replace
 from math import isfinite
 from pathlib import Path
-from typing import TYPE_CHECKING
+from shlex import split
+from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING, Any
 
 import matplotlib as mpl
+import matplotlib.style as mplstyle
 from matplotlib.colors import to_rgba
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
@@ -23,39 +26,71 @@ if TYPE_CHECKING:
     from plotting_tools.graph_builder import GraphBuilder
 
 
+def _load_styles(
+    styles: list[str | Path],
+) -> tuple[list[str | Path | dict[str, Any]], list[tuple[str, str]]]:
+    """独自キーだけを取り出し、標準部分の解釈はMatplotlibへ委ねる。"""
+    standard_styles: list[str | Path | dict[str, Any]] = []
+    event_settings: list[tuple[str, str]] = []
+    for style in styles:
+        # Matplotlibと同じく文字列の登録名を優先し、明示Pathと区別する。
+        if isinstance(style, str) and (style == "default" or style in mplstyle.library):
+            standard_styles.append(style)
+            continue
+        path = Path(style)
+        if not path.is_file():
+            standard_styles.append(style)
+            continue
+        standard_lines: list[str] = []
+        has_event_settings = False
+        for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+            if not line.lstrip().startswith("plotting_tools.events."):
+                standard_lines.append(line)
+                continue
+            key, separator, value = line.partition(":")
+            name = key.strip().removeprefix("plotting_tools.events.")
+            if name not in {"span_alpha", "point_alpha", "default_color"}:
+                msg = f"unknown event style: {key.strip()}"
+                raise ValueError(msg)
+            # 独自項目の値だけを解析する。引用hexの#と末尾コメントを区別する。
+            tokens = split(value, comments=True)
+            if not separator or not tokens:
+                msg = f"invalid event style: {line.strip()}"
+                raise ValueError(msg)
+            event_settings.append((name, " ".join(tokens)))
+            has_event_settings = True
+            # 標準parserの行番号を保ち、独自行を未知キーとして警告させない。
+            standard_lines.append("\n")
+        if not has_event_settings:
+            standard_styles.append(style)
+            continue
+        # 公開parserはファイルを受け取る。Windowsでも書込handleを閉じてから読む。
+        # 成否にかかわらずcontext終了時に一時ファイルを除去する。
+        with TemporaryDirectory() as directory:
+            standard_path = Path(directory) / "standard.mplstyle"
+            standard_path.write_text("".join(standard_lines), encoding="utf-8")
+            parameters = mpl.rc_params_from_file(standard_path, use_default_template=False)
+            standard_styles.append(dict(parameters.items()))
+    return standard_styles, event_settings
+
+
 class EventGroup:
     """Plot.eventsから操作するイベント群。独立生成用の公開クラスではない。"""
 
-    def __init__(self, builder: GraphBuilder, styles: list[str | Path]) -> None:
+    def __init__(self, builder: GraphBuilder, settings: list[tuple[str, str]]) -> None:
         self._builder = builder
         self._span_alpha = 0.1
         self._point_alpha = 0.8
         self._default_color = "green"
         self._events: list[tuple[EventSpan | EventPoint, Rectangle | Line2D]] = []
         self._texts: list[tuple[Text, EventSpan | EventPoint]] = []
-        # コメントdirectiveなら標準mplstyle parserへそのまま渡せる。
-        # ファイルでないMatplotlibのスタイル名には独自設定を持たせない。
-        for style in styles:
-            path = Path(style)
-            if not path.is_file():
-                continue
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if not line.lstrip().startswith("# plotting_tools.events."):
-                    continue
-                key, separator, value = line.strip().removeprefix("# ").partition(":")
-                if not separator:
-                    msg = f"invalid event style: {line}"
-                    raise ValueError(msg)
-                name = key.removeprefix("plotting_tools.events.")
-                if name == "span_alpha":
-                    self.style(span_alpha=float(value.strip()))
-                elif name == "point_alpha":
-                    self.style(point_alpha=float(value.strip()))
-                elif name == "default_color":
-                    self.style(default_color=value.strip())
-                else:
-                    msg = f"unknown event style: {key}"
-                    raise ValueError(msg)
+        for name, value in settings:
+            if name == "span_alpha":
+                self.style(span_alpha=float(value))
+            elif name == "point_alpha":
+                self.style(point_alpha=float(value))
+            else:
+                self.style(default_color=value)
 
     def style(
         self,
